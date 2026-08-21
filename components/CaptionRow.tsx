@@ -1,5 +1,6 @@
 'use client'
 
+import { useSyncExternalStore } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { languageByCode } from '@/lib/languages'
 import type { RenderedUtterance } from '@/lib/types'
@@ -14,6 +15,28 @@ function speakerColor(speakerId: string): string {
   let hash = 0
   for (let i = 0; i < speakerId.length; i++) hash = (hash * 31 + speakerId.charCodeAt(i)) | 0
   return `hsl(${hues[Math.abs(hash) % hues.length]} 70% 65%)`
+}
+
+function subscribeVisibility(onChange: () => void): () => void {
+  document.addEventListener('visibilitychange', onChange)
+  return () => document.removeEventListener('visibilitychange', onChange)
+}
+
+/**
+ * A background tab is the normal case here — the premise is reading this
+ * beside a Jitsi call in another window. `AnimatePresence mode="popLayout"`
+ * absolutely-positions the exiting node and waits for its exit animation to
+ * finish; with no requestAnimationFrame ticks in a hidden tab that never
+ * happens, so the old text sits on top of the new one indefinitely.
+ * useSyncExternalStore keeps this SSR-safe and reactive, unlike reading
+ * document.hidden during render.
+ */
+function useDocumentHidden(): boolean {
+  return useSyncExternalStore(
+    subscribeVisibility,
+    () => document.hidden,
+    () => false,
+  )
 }
 
 function relativeTime(ts: number, now: number): string {
@@ -33,6 +56,7 @@ export function CaptionRow({
   const source = languageByCode(utterance.srcLang)
   const showsTranslation = utterance.translationState === 'done' && utterance.translation
   const reduceMotion = useReducedMotion()
+  const hidden = useDocumentHidden()
 
   return (
     <motion.article
@@ -64,18 +88,24 @@ export function CaptionRow({
         <p className="text-base opacity-55 text-[var(--muted)]">translating…</p>
       )}
 
-      <AnimatePresence mode="popLayout" initial={false}>
-        <motion.p
-          key={showsTranslation ? 'translation' : 'source'}
-          className="text-xl"
-          initial={reduceMotion ? false : { opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={reduceMotion ? { opacity: 1 } : { opacity: 0 }}
-          transition={{ duration: reduceMotion ? 0 : 0.18 }}
-        >
+      {hidden ? (
+        <p className="text-xl">
           {showsTranslation ? utterance.translation : utterance.text}
-        </motion.p>
-      </AnimatePresence>
+        </p>
+      ) : (
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.p
+            key={showsTranslation ? 'translation' : 'source'}
+            className="text-xl"
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={reduceMotion ? { opacity: 1 } : { opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.18 }}
+          >
+            {showsTranslation ? utterance.translation : utterance.text}
+          </motion.p>
+        </AnimatePresence>
+      )}
 
       {utterance.translationState === 'failed' && (
         <p className="text-xs text-[var(--muted)] opacity-70">translation unavailable</p>
