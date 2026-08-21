@@ -20,6 +20,16 @@ export function CaptionStream({ utterances }: { utterances: RenderedUtterance[] 
     bottom.current?.scrollIntoView({ behavior: 'smooth' })
   }, [finalized.length, interim.length])
 
+  if (finalized.length === 0 && interim.length === 0) {
+    return (
+      <div className="pointer-events-none select-none py-3 opacity-25">
+        <p className="text-xs">● Ana · Español</p>
+        <p className="text-[0.8em] opacity-55">Creo que deberíamos fusionar ese PR primero</p>
+        <p className="text-xl">I think we should merge that PR first.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col">
       {finalized.map((u) => (

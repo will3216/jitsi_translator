@@ -7,6 +7,7 @@ import { MicIndicator } from '@/components/MicIndicator'
 import { Roster } from '@/components/Roster'
 import { SecondWindowButton } from '@/components/SecondWindowButton'
 import { TypeToSend } from '@/components/TypeToSend'
+import { UnsupportedScreen } from '@/components/UnsupportedScreen'
 import { languageByCode } from '@/lib/languages'
 import { initialLanguageSelection, nextLanguageSelection } from '@/lib/languageSelection'
 import { initialRoomState, roomReducer } from '@/lib/roomReducer'
@@ -137,6 +138,8 @@ export default function Room({
     }
   }, [state.utterances])
 
+  if (speech.supported === false && micOn) return <UnsupportedScreen />
+
   return (
     <main className="grid h-screen grid-rows-[auto_1fr_auto] overflow-hidden">
       <header className="border-b border-white/10 px-6 py-3">
@@ -163,9 +166,6 @@ export default function Room({
           />
         </div>
         <Roster participants={state.participants} meId={me.id} />
-
-        <p>speech supported: {String(speech.supported)}</p>
-        <p>speech error: {speech.error ?? 'none'}</p>
       </header>
 
       <section className="overflow-y-auto px-6 py-4">
@@ -179,9 +179,17 @@ export default function Room({
         )}
       </section>
 
-      <footer className="flex items-center gap-4 border-t border-white/10 px-6 py-3">
-        <TypeToSend onSend={sendTyped} />
-        <MicIndicator active={micOn} onToggle={() => setMicOn((on) => !on)} />
+      <footer className="border-t border-white/10 px-6 py-3">
+        <div className="flex items-center gap-4">
+          <TypeToSend onSend={sendTyped} />
+          <MicIndicator active={micOn} onToggle={() => setMicOn((on) => !on)} />
+        </div>
+        {speech.error === 'not-allowed' && (
+          <p className="mt-2 text-xs text-[var(--muted)]">
+            Microphone blocked. Click the camera icon in Chrome&apos;s address bar,
+            allow the microphone, then reload. You can still type below.
+          </p>
+        )}
       </footer>
     </main>
   )
