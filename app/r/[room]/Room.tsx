@@ -1,9 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { LANGUAGES, languageByCode } from '@/lib/languages'
+import { LanguagePicker } from '@/components/LanguagePicker'
+import { languageByCode } from '@/lib/languages'
+import { initialLanguageSelection, nextLanguageSelection } from '@/lib/languageSelection'
 import { initialRoomState, roomReducer } from '@/lib/roomReducer'
-import type { LangCode, Participant, Utterance } from '@/lib/types'
+import type { Participant, Utterance } from '@/lib/types'
 import { useSpeechRecognition } from '@/lib/useSpeechRecognition'
 import { useTransport } from '@/lib/useTransport'
 
@@ -11,8 +13,9 @@ const CONTEXT_SIZE = 3
 
 export default function Room({ roomId }: { roomId: string }) {
   const [state, dispatch] = useReducer(roomReducer, initialRoomState)
-  const [speakLang, setSpeakLang] = useState<LangCode>('en')
-  const [showLang, setShowLang] = useState<LangCode>('en')
+  const [languages, setLanguages] = useState(initialLanguageSelection)
+  const speakLang = languages.speak
+  const showLang = languages.show
   const [micOn, setMicOn] = useState(false)
 
   const [myId] = useState(() => crypto.randomUUID())
@@ -112,32 +115,26 @@ export default function Room({ roomId }: { roomId: string }) {
             {transport.connected ? '●' : '○'} room {roomId}
           </span>
         </div>
-        {/* pickers land here in Task 11, roster in Task 13 */}
+        <div className="mt-2 flex gap-6">
+          <LanguagePicker
+            label="I speak"
+            value={languages.speak}
+            onChange={(value) =>
+              setLanguages((s) => nextLanguageSelection(s, { field: 'speak', value }))
+            }
+          />
+          <LanguagePicker
+            label="Show me"
+            value={languages.show}
+            onChange={(value) =>
+              setLanguages((s) => nextLanguageSelection(s, { field: 'show', value }))
+            }
+          />
+        </div>
+        {/* roster lands here in Task 13 */}
 
         <p>speech supported: {String(speech.supported)}</p>
         <p>speech error: {speech.error ?? 'none'}</p>
-
-        <label>
-          I speak{' '}
-          <select value={speakLang} onChange={(e) => setSpeakLang(e.target.value as LangCode)}>
-            {LANGUAGES.map((l) => (
-              <option key={l.code} value={l.code}>
-                {l.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          Show me{' '}
-          <select value={showLang} onChange={(e) => setShowLang(e.target.value as LangCode)}>
-            {LANGUAGES.map((l) => (
-              <option key={l.code} value={l.code}>
-                {l.label}
-              </option>
-            ))}
-          </select>
-        </label>
 
         <ul>
           {state.participants.map((p) => (
