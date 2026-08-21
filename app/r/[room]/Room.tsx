@@ -5,11 +5,12 @@ import { CaptionStream } from '@/components/CaptionStream'
 import { LanguagePicker } from '@/components/LanguagePicker'
 import { MicIndicator } from '@/components/MicIndicator'
 import { Roster } from '@/components/Roster'
+import { SecondWindowButton } from '@/components/SecondWindowButton'
 import { TypeToSend } from '@/components/TypeToSend'
 import { languageByCode } from '@/lib/languages'
 import { initialLanguageSelection, nextLanguageSelection } from '@/lib/languageSelection'
 import { initialRoomState, roomReducer } from '@/lib/roomReducer'
-import type { Participant, Utterance } from '@/lib/types'
+import type { LangCode, Participant, Utterance } from '@/lib/types'
 import { useSpeechRecognition } from '@/lib/useSpeechRecognition'
 import { useTransport } from '@/lib/useTransport'
 
@@ -17,7 +18,18 @@ const CONTEXT_SIZE = 3
 
 export default function Room({ roomId }: { roomId: string }) {
   const [state, dispatch] = useReducer(roomReducer, initialRoomState)
-  const [languages, setLanguages] = useState(initialLanguageSelection)
+  const [languages, setLanguages] = useState(() => {
+    if (typeof window === 'undefined') return initialLanguageSelection
+    const params = new URLSearchParams(window.location.search)
+    const show = params.get('show')
+    const speak = params.get('speak')
+    if (!show && !speak) return initialLanguageSelection
+    return {
+      speak: (languageByCode(speak ?? '')?.code ?? 'en') as LangCode,
+      show: (languageByCode(show ?? '')?.code ?? 'en') as LangCode,
+      showTouched: Boolean(show),
+    }
+  })
   const speakLang = languages.speak
   const showLang = languages.show
   const [micOn, setMicOn] = useState(false)
@@ -73,6 +85,9 @@ export default function Room({ roomId }: { roomId: string }) {
     (text: string) => emit(crypto.randomUUID(), text, true),
     [emit],
   )
+
+  const alone = state.participants.filter((p) => p.id !== me.id).length === 0
+  const otherLang: LangCode = languages.show === 'en' ? 'es' : 'en'
 
   const locale = languageByCode(speakLang)?.sttLocale ?? 'en-US'
   const speech = useSpeechRecognition({ locale, enabled: micOn, onInterim, onFinal })
@@ -147,7 +162,14 @@ export default function Room({ roomId }: { roomId: string }) {
       </header>
 
       <section className="overflow-y-auto px-6 py-4">
-        <CaptionStream utterances={state.utterances} />
+        {alone ? (
+          <div className="flex h-full flex-col items-start justify-center gap-4">
+            <p className="text-[var(--muted)]">You&apos;re the only one here.</p>
+            <SecondWindowButton roomId={roomId} otherLang={otherLang} />
+          </div>
+        ) : (
+          <CaptionStream utterances={state.utterances} />
+        )}
       </section>
 
       <footer className="flex items-center gap-4 border-t border-white/10 px-6 py-3">
