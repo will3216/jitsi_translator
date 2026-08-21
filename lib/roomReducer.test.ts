@@ -153,3 +153,60 @@ describe('roomReducer — translation state machine', () => {
     expect(state.utterances.map((u) => u.id)).toEqual(['a', 'b'])
   })
 })
+
+describe('roomReducer — target/changed', () => {
+  it('marks a final utterance pending when re-targeted to a foreign language', () => {
+    let state = receive(initialRoomState, utterance({ srcLang: 'es', isFinal: true }), 'es')
+    expect(state.utterances[0].translationState).toBe('none')
+    state = roomReducer(state, { type: 'target/changed', myTarget: 'en' })
+    expect(state.utterances[0].translationState).toBe('pending')
+  })
+
+  it("marks a final utterance none when re-targeted to the utterance's own language", () => {
+    let state = receive(initialRoomState, utterance({ srcLang: 'es', isFinal: true }), 'en')
+    state = roomReducer(state, { type: 'translation/succeeded', id: 'u1', translation: 'hello' })
+    state = roomReducer(state, { type: 'target/changed', myTarget: 'es' })
+    expect(state.utterances[0].translationState).toBe('none')
+    expect(state.utterances[0].translation).toBeUndefined()
+  })
+
+  it('drops a stale translation when re-targeted to another foreign language', () => {
+    let state = receive(initialRoomState, utterance({ srcLang: 'es', isFinal: true }), 'en')
+    state = roomReducer(state, { type: 'translation/succeeded', id: 'u1', translation: 'hello' })
+    state = roomReducer(state, { type: 'target/changed', myTarget: 'en' })
+    expect(state.utterances[0].translationState).toBe('pending')
+    expect(state.utterances[0].translation).toBeUndefined()
+  })
+
+  it('leaves interim utterances untouched', () => {
+    let state = receive(
+      initialRoomState,
+      utterance({ srcLang: 'es', isFinal: false, text: 'hola' }),
+      'es',
+    )
+    state = roomReducer(state, { type: 'target/changed', myTarget: 'en' })
+    expect(state.utterances[0].translationState).toBe('none')
+    expect(state.utterances[0].isFinal).toBe(false)
+    expect(state.utterances[0].text).toBe('hola')
+  })
+
+  it('gives a failed utterance another chance', () => {
+    let state = receive(initialRoomState, utterance({ srcLang: 'es', isFinal: true }), 'en')
+    state = roomReducer(state, { type: 'translation/failed', id: 'u1' })
+    expect(state.utterances[0].translationState).toBe('failed')
+    state = roomReducer(state, { type: 'target/changed', myTarget: 'en' })
+    expect(state.utterances[0].translationState).toBe('pending')
+  })
+
+  it('does not mutate the previous state', () => {
+    const before = receive(initialRoomState, utterance({ srcLang: 'es', isFinal: true }), 'en')
+    const withTranslation = roomReducer(before, {
+      type: 'translation/succeeded',
+      id: 'u1',
+      translation: 'hello',
+    })
+    roomReducer(withTranslation, { type: 'target/changed', myTarget: 'es' })
+    expect(withTranslation.utterances[0].translation).toBe('hello')
+    expect(withTranslation.utterances[0].translationState).toBe('done')
+  })
+})
