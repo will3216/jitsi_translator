@@ -5,7 +5,12 @@ import { languageByCode } from '@/lib/languages'
 import type { RenderedUtterance } from '@/lib/types'
 
 function speakerColor(speakerId: string): string {
-  const hues = [200, 320, 40, 150, 270]
+  // 12 hues, evenly spaced 30° apart around the wheel, phase-shifted so
+  // none lands near 0/360 (pure red reads as an error state — the nearest
+  // hues, 15 and 345, sit a full 15° clear of it on either side). At 70%
+  // saturation / 65% lightness on the near-black --bg (#0b0b0d) all twelve
+  // stay legible and distinct from one another.
+  const hues = [15, 45, 75, 105, 135, 165, 195, 225, 255, 285, 315, 345]
   let hash = 0
   for (let i = 0; i < speakerId.length; i++) hash = (hash * 31 + speakerId.charCodeAt(i)) | 0
   return `hsl(${hues[Math.abs(hash) % hues.length]} 70% 65%)`
