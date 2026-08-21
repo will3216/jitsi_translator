@@ -1757,7 +1757,7 @@ Create `flake.nix`:
   description = "Live translated captions — a proof of concept";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -1776,9 +1776,22 @@ Create `flake.nix`:
           '';
         };
 
+        # This flake provides a development shell, not a package. `nix run`
+        # is a local convenience that shells out to `npm install` and
+        # `npm run dev` — it does live network I/O and writes `node_modules`
+        # outside the Nix store, which is deliberately impure. Proper
+        # packaging (`pkgs.buildNpmPackage` with a vendored `npmDepsHash`)
+        # belongs to the server-side build this proof of concept exists to
+        # justify, not to the proof of concept itself. Needs a `.env.local`
+        # with ABLY_API_KEY and ANTHROPIC_API_KEY in the working directory.
         apps.default = {
           type = "app";
           program = toString (pkgs.writeShellScript "dev" ''
+            if [ ! -f package.json ]; then
+              echo "error: run this from a checkout of the repository." >&2
+              echo "  git clone <repo> && cd jitsi_translator && nix run" >&2
+              exit 1
+            fi
             export PATH="${pkgs.nodejs_22}/bin:$PATH"
             npm install
             exec npm run dev
@@ -1788,10 +1801,16 @@ Create `flake.nix`:
 }
 ```
 
+`nixpkgs` is pinned to the `nixos-26.05` release channel rather than `nixos-unstable`: a volunteer NixOS project is likelier to track a release channel, and it avoids the flake breaking underfoot every time unstable rolls (as it did here — `nixos-unstable` dropped `x86_64-darwin` support entirely partway through this project).
+
+The `apps.default` script guards on `package.json` in the working directory so the canonical `nix run github:org/jitsi_translator` invocation fails with an actionable message instead of silently running `npm install`/`npm run dev` against whatever tree the caller happens to be standing in.
+
 - [ ] **Step 2: Verify the dev shell builds**
 
 Run: `nix develop --command node --version`
 Expected: prints a v22 version string.
+
+Also verify `nix run` from the repo root starts the dev server, and `nix run` from a different directory fails cleanly with the guard message rather than doing something silently wrong.
 
 If Nix is not installed on this machine, skip the verification and note in `NOTES.md` that the flake is unverified — do not silently claim it works.
 

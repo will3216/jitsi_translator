@@ -21,9 +21,22 @@
           '';
         };
 
+        # This flake provides a development shell, not a package. `nix run`
+        # is a local convenience that shells out to `npm install` and
+        # `npm run dev` — it does live network I/O and writes `node_modules`
+        # outside the Nix store, which is deliberately impure. Proper
+        # packaging (`pkgs.buildNpmPackage` with a vendored `npmDepsHash`)
+        # belongs to the server-side build this proof of concept exists to
+        # justify, not to the proof of concept itself. Needs a `.env.local`
+        # with ABLY_API_KEY and ANTHROPIC_API_KEY in the working directory.
         apps.default = {
           type = "app";
           program = toString (pkgs.writeShellScript "dev" ''
+            if [ ! -f package.json ]; then
+              echo "error: run this from a checkout of the repository." >&2
+              echo "  git clone <repo> && cd jitsi_translator && nix run" >&2
+              exit 1
+            fi
             export PATH="${pkgs.nodejs_22}/bin:$PATH"
             npm install
             exec npm run dev
