@@ -34,3 +34,7 @@ Chrome desktop only. Run each and record the result.
 - `crypto.randomUUID` requires a secure context, so opening the app over
   plain `http://` on a LAN IP (rather than `localhost`) will throw on the
   first result.
+- `npx tsc --noEmit` fails on a clean checkout with `Cannot find name
+  'LayoutProps'`. Next 16 generates route types into the gitignored
+  `.next/types/`; run `npx next typegen` first (or any `next build`/`next
+  dev`).
