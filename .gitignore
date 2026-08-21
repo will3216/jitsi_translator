@@ -1,0 +1,21 @@
+# env — never commit; a removed key still lives in history
+.env
+.env.local
+.env*.local
+
+# node / next
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# vercel
+.vercel
+
+# nix
+result
+result-*
+.direnv/
+
+# os
+.DS_Store
