@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { CaptionStream } from '@/components/CaptionStream'
 import { LanguagePicker } from '@/components/LanguagePicker'
+import { Roster } from '@/components/Roster'
 import { languageByCode } from '@/lib/languages'
 import { initialLanguageSelection, nextLanguageSelection } from '@/lib/languageSelection'
 import { initialRoomState, roomReducer } from '@/lib/roomReducer'
@@ -132,18 +133,10 @@ export default function Room({ roomId }: { roomId: string }) {
             }
           />
         </div>
-        {/* roster lands here in Task 13 */}
+        <Roster participants={state.participants} meId={me.id} />
 
         <p>speech supported: {String(speech.supported)}</p>
         <p>speech error: {speech.error ?? 'none'}</p>
-
-        <ul>
-          {state.participants.map((p) => (
-            <li key={p.id}>
-              {p.name} ({p.srcLang})
-            </li>
-          ))}
-        </ul>
       </header>
 
       <section className="overflow-y-auto px-6 py-4">
