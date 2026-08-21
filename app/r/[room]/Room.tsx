@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { CaptionStream } from '@/components/CaptionStream'
 import { LanguagePicker } from '@/components/LanguagePicker'
+import { MicIndicator } from '@/components/MicIndicator'
 import { Roster } from '@/components/Roster'
 import { languageByCode } from '@/lib/languages'
 import { initialLanguageSelection, nextLanguageSelection } from '@/lib/languageSelection'
 import { initialRoomState, roomReducer } from '@/lib/roomReducer'
 import type { Participant, Utterance } from '@/lib/types'
+import { useAudioLevel } from '@/lib/useAudioLevel'
 import { useSpeechRecognition } from '@/lib/useSpeechRecognition'
 import { useTransport } from '@/lib/useTransport'
 
@@ -69,6 +71,7 @@ export default function Room({ roomId }: { roomId: string }) {
 
   const locale = languageByCode(speakLang)?.sttLocale ?? 'en-US'
   const speech = useSpeechRecognition({ locale, enabled: micOn, onInterim, onFinal })
+  const level = useAudioLevel(micOn)
 
   // Anything the reducer put into 'pending' needs a translation. The set of
   // ids already requested is what stops a re-render from firing a second call.
@@ -144,11 +147,9 @@ export default function Room({ roomId }: { roomId: string }) {
       </section>
 
       <footer className="border-t border-white/10 px-6 py-3">
-        {/* mic, meter, and type-to-send land here in Tasks 14 and 15 */}
+        {/* type-to-send lands here in Task 15 */}
 
-        <button onClick={() => setMicOn((on) => !on)}>
-          {micOn ? 'stop mic' : 'start mic'}
-        </button>
+        <MicIndicator active={micOn} level={level} onToggle={() => setMicOn((on) => !on)} />
       </footer>
     </main>
   )
