@@ -29,6 +29,22 @@ Chrome desktop only. Run each and record the result.
       Confirm the new sentence appears as its **own** caption rather than
       overwriting the abandoned partial.
 
+## Manual verification — useTransport (Task 7)
+
+Run each and record the result.
+
+- [ ] Close a browser **tab** (not a client-side navigation) and time how long
+      the remaining window shows the departed participant. Should disappear
+      promptly, not after ~2 minutes.
+- [ ] Watch the console during unmount and during a room change for
+      `Unhandled promise rejection` from `presence.leave` / `presence.enter`.
+- [ ] Run with `ABLY_API_KEY` unset and confirm the failure is visible
+      (`connected: false`) rather than a silent empty roster.
+- [ ] In dev with Strict Mode, confirm the roster does not show a duplicated
+      self entry on first mount.
+- [ ] Change speaking language mid-session in one window; confirm the other
+      window's roster label updates and no reconnect occurs.
+
 ## Open questions
 
 - `crypto.randomUUID` requires a secure context, so opening the app over

@@ -1304,9 +1304,10 @@ Create `lib/useTransport.ts`:
 ```typescript
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Ably from 'ably'
 import type { Participant, Utterance } from './types'
+import { languageByCode } from './languages'
 
 export interface Transport {
   publish(u: Utterance): void
@@ -1331,10 +1332,14 @@ export function useTransport(roomId: string, me: Participant): Transport {
   const meRef = useRef(me)
   useEffect(() => {
     meRef.current = me
-    channel.current?.presence.update({ name: me.name, srcLang: me.srcLang })
+    channel.current?.presence
+      .update({ name: me.name, srcLang: me.srcLang })
+      .catch(() => {})
   }, [me])
 
   useEffect(() => {
+    let cancelled = false
+
     const client = new Ably.Realtime({
       authUrl: '/api/realtime-token',
       authParams: { clientId: meRef.current.id },
@@ -1344,9 +1349,12 @@ export function useTransport(roomId: string, me: Participant): Transport {
     const ch = client.channels.get(`room:${roomId}`)
     channel.current = ch
 
-    client.connection.on('connected', () => setConnected(true))
-    client.connection.on('disconnected', () => setConnected(false))
-    client.connection.on('failed', () => setConnected(false))
+    const onConnected = () => setConnected(true)
+    const onDisconnected = () => setConnected(false)
+    const onFailed = () => setConnected(false)
+    client.connection.on('connected', onConnected)
+    client.connection.on('disconnected', onDisconnected)
+    client.connection.on('failed', onFailed)
 
     ch.subscribe(EVENT, (message) => {
       const u = message.data as Utterance
@@ -1357,24 +1365,43 @@ export function useTransport(roomId: string, me: Participant): Transport {
 
     const syncPresence = async () => {
       const members = await ch.presence.get()
-      setParticipants(
-        members.map((m) => ({
+      if (cancelled) return
+      const byClientId = new Map<string, Participant>()
+      for (const m of members) {
+        const data = m.data as { name?: string; srcLang?: string } | undefined
+        byClientId.set(m.clientId, {
           id: m.clientId,
-          name: (m.data as { name?: string })?.name ?? m.clientId,
-          srcLang: (m.data as { srcLang?: Participant['srcLang'] })?.srcLang ?? 'en',
-        })),
-      )
+          name: data?.name ?? m.clientId,
+          srcLang: languageByCode(data?.srcLang ?? '')?.code ?? 'en',
+        })
+      }
+      setParticipants(Array.from(byClientId.values()))
     }
 
-    ch.presence.subscribe(['enter', 'leave', 'update'], () => void syncPresence())
-    void ch.presence
+    ch.presence.subscribe(['enter', 'leave', 'update'], () => {
+      syncPresence().catch(() => {})
+    })
+    ch.presence
       .enter({ name: meRef.current.name, srcLang: meRef.current.srcLang })
       .then(syncPresence)
+      .catch(() => {
+        if (!cancelled) setConnected(false)
+      })
+
+    const handlePageHide = () => {
+      client.close()
+    }
+    window.addEventListener('pagehide', handlePageHide)
 
     return () => {
+      cancelled = true
+      window.removeEventListener('pagehide', handlePageHide)
+      client.connection.off('connected', onConnected)
+      client.connection.off('disconnected', onDisconnected)
+      client.connection.off('failed', onFailed)
       ch.presence.unsubscribe()
       ch.unsubscribe()
-      void ch.presence.leave()
+      ch.presence.leave().catch(() => {})
       client.close()
       channel.current = null
       setConnected(false)
@@ -1394,7 +1421,7 @@ export function useTransport(roomId: string, me: Participant): Transport {
       lastInterimAt.current = 0
     }
 
-    void ch.publish(EVENT, u)
+    ch.publish(EVENT, u).catch(() => {})
   }, [])
 
   const subscribe = useCallback((cb: (u: Utterance) => void) => {
@@ -1404,7 +1431,10 @@ export function useTransport(roomId: string, me: Participant): Transport {
     }
   }, [])
 
-  return { publish, subscribe, participants, connected }
+  return useMemo(
+    () => ({ publish, subscribe, participants, connected }),
+    [publish, subscribe, participants, connected],
+  )
 }
 ```
 
