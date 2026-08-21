@@ -24,6 +24,10 @@ Chrome desktop only. Run each and record the result.
 - [ ] Change the spoken language **mid-utterance** — while a partial caption
       is on screen, not during silence — and confirm the first caption in
       the new language does **not** replace the old partial.
+- [ ] Start speaking, then **go silent mid-sentence** so Chrome ends the
+      session before a final arrives, then speak something different.
+      Confirm the new sentence appears as its **own** caption rather than
+      overwriting the abandoned partial.
 
 ## Open questions
 

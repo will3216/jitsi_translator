@@ -1222,13 +1222,15 @@ export function useSpeechRecognition({
 
     rec.onend = () => {
       setListening(false)
+      // A session that ended without a final abandons its in-flight utterance;
+      // the next session's first result is a new utterance, not a continuation.
+      currentId.current = null
       if (!wantActive.current) return
       restartTimer.current = setTimeout(safeStart, backoff.current)
     }
 
     wantActive.current = true
     backoff.current = 0
-    setListening(true)
     safeStart()
 
     return () => {
