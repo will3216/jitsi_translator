@@ -6,14 +6,12 @@ vi.mock('@anthropic-ai/sdk', () => {
   class APIError extends Error {}
   class APIConnectionError extends APIError {}
   class RateLimitError extends APIError {}
-  class NotFoundError extends APIError {}
 
   class MockAnthropic {
     messages = { create }
     static APIError = APIError
     static APIConnectionError = APIConnectionError
     static RateLimitError = RateLimitError
-    static NotFoundError = NotFoundError
   }
 
   return { default: MockAnthropic }
