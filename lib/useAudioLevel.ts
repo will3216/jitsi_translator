@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react'
 
-export function useAudioLevel(active: boolean): number {
+export function useAudioLevel(active: boolean): { level: number; error: boolean } {
   const [level, setLevel] = useState(0)
+  const [error, setError] = useState(false)
 
   useEffect(() => {
     if (!active) {
       setLevel(0)
+      setError(false)
       return
     }
 
@@ -41,7 +43,11 @@ export function useAudioLevel(active: boolean): number {
         }
         tick()
       })
-      .catch(() => setLevel(0))
+      .catch(() => {
+        if (cancelled) return
+        setLevel(0)
+        setError(true)
+      })
 
     return () => {
       cancelled = true
@@ -52,5 +58,5 @@ export function useAudioLevel(active: boolean): number {
     }
   }, [active])
 
-  return level
+  return { level, error }
 }

@@ -1,16 +1,18 @@
 'use client'
 
+import { useAudioLevel } from '@/lib/useAudioLevel'
+
 const BARS = [0.15, 0.4, 0.7, 0.4, 0.15]
 
 export function MicIndicator({
   active,
-  level,
   onToggle,
 }: {
   active: boolean
-  level: number
   onToggle: () => void
 }) {
+  const { level, error } = useAudioLevel(active)
+
   return (
     <div className="flex items-center gap-3">
       <button
@@ -21,14 +23,19 @@ export function MicIndicator({
         {active ? '🎙 on' : '🎙 off'}
       </button>
 
-      <div className="flex h-6 items-end gap-1" aria-hidden>
+      <div
+        className="flex h-6 items-end gap-1"
+        role={error ? 'img' : undefined}
+        aria-label={error ? 'microphone unavailable' : undefined}
+        aria-hidden={error ? undefined : true}
+      >
         {BARS.map((weight, i) => (
           <span
             key={i}
             className="w-1 rounded-full bg-[var(--fg)]"
             style={{
-              height: `${Math.max(2, level * weight * 100)}%`,
-              opacity: active ? 0.8 : 0.2,
+              height: `${error ? 2 : Math.max(2, level * weight * 100)}%`,
+              opacity: error ? 0.1 : active ? 0.8 : 0.2,
             }}
           />
         ))}

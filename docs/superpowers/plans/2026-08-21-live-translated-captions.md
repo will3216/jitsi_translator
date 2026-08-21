@@ -2375,9 +2375,9 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: `useAudioLevel(active: boolean): number` returning 0–1, and `<MicIndicator active={boolean} level={number} onToggle={() => void} />`.
+- Produces: `useAudioLevel(active: boolean): { level: number; error: boolean }` (level 0–1), and `<MicIndicator active={boolean} onToggle={() => void} />`. `useAudioLevel` is called inside `MicIndicator`, not in `Room` — `Room` holds no level state, so the ~60×/sec level updates during active speech never re-render the caption tree.
 
-The meter is about twenty lines and it is what makes silence read as "working" rather than "broken". **The mic is never requested on page load** — only when the button is clicked.
+The meter is about twenty lines and it is what makes silence read as "working" rather than "broken". **The mic is never requested on page load** — only when the button is clicked. A genuine `getUserMedia` failure (mic denied, device gone, or — on some mobile WebViews — a second stream simply rejected because only one audio input is permitted) must not look identical to silence: `error` distinguishes a broken microphone from a quiet one, which flat bars alone cannot.
 
 - [ ] **Step 1: Write the audio level hook**
 
@@ -2388,12 +2388,14 @@ Create `lib/useAudioLevel.ts`:
 
 import { useEffect, useState } from 'react'
 
-export function useAudioLevel(active: boolean): number {
+export function useAudioLevel(active: boolean): { level: number; error: boolean } {
   const [level, setLevel] = useState(0)
+  const [error, setError] = useState(false)
 
   useEffect(() => {
     if (!active) {
       setLevel(0)
+      setError(false)
       return
     }
 
@@ -2427,7 +2429,11 @@ export function useAudioLevel(active: boolean): number {
         }
         tick()
       })
-      .catch(() => setLevel(0))
+      .catch(() => {
+        if (cancelled) return
+        setLevel(0)
+        setError(true)
+      })
 
     return () => {
       cancelled = true
@@ -2438,28 +2444,30 @@ export function useAudioLevel(active: boolean): number {
     }
   }, [active])
 
-  return level
+  return { level, error }
 }
 ```
 
 - [ ] **Step 2: Write the indicator**
 
-Create `components/MicIndicator.tsx`:
+Create `components/MicIndicator.tsx`. `useAudioLevel` is called here, not in `Room`, so the room's caption tree does not re-render on every animation frame while the mic is live. When `error` is set, the bars collapse to a visibly dead state (not just flat-and-fine) and the meter carries an accessible `"microphone unavailable"` label — this is the meter's own legibility, distinct from Task 17's mic-denied recovery screen, which is driven by `speech.error` on a different hook:
 
 ```typescript
 'use client'
+
+import { useAudioLevel } from '@/lib/useAudioLevel'
 
 const BARS = [0.15, 0.4, 0.7, 0.4, 0.15]
 
 export function MicIndicator({
   active,
-  level,
   onToggle,
 }: {
   active: boolean
-  level: number
   onToggle: () => void
 }) {
+  const { level, error } = useAudioLevel(active)
+
   return (
     <div className="flex items-center gap-3">
       <button
@@ -2470,14 +2478,19 @@ export function MicIndicator({
         {active ? '🎙 on' : '🎙 off'}
       </button>
 
-      <div className="flex h-6 items-end gap-1" aria-hidden>
+      <div
+        className="flex h-6 items-end gap-1"
+        role={error ? 'img' : undefined}
+        aria-label={error ? 'microphone unavailable' : undefined}
+        aria-hidden={error ? undefined : true}
+      >
         {BARS.map((weight, i) => (
           <span
             key={i}
             className="w-1 rounded-full bg-[var(--fg)]"
             style={{
-              height: `${Math.max(2, level * weight * 100)}%`,
-              opacity: active ? 0.8 : 0.2,
+              height: `${error ? 2 : Math.max(2, level * weight * 100)}%`,
+              opacity: error ? 0.1 : active ? 0.8 : 0.2,
             }}
           />
         ))}
@@ -2489,14 +2502,10 @@ export function MicIndicator({
 
 - [ ] **Step 3: Use it in the room footer**
 
-In `app/r/[room]/Room.tsx`, replace the plain mic button:
+In `app/r/[room]/Room.tsx`, replace the plain mic button. `Room` holds no level state — it passes only `active` and `onToggle`:
 
 ```typescript
-  const level = useAudioLevel(micOn)
-```
-
-```typescript
-        <MicIndicator active={micOn} level={level} onToggle={() => setMicOn((on) => !on)} />
+        <MicIndicator active={micOn} onToggle={() => setMicOn((on) => !on)} />
 ```
 
 - [ ] **Step 4: Verify**

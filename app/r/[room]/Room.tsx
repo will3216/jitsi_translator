@@ -9,7 +9,6 @@ import { languageByCode } from '@/lib/languages'
 import { initialLanguageSelection, nextLanguageSelection } from '@/lib/languageSelection'
 import { initialRoomState, roomReducer } from '@/lib/roomReducer'
 import type { Participant, Utterance } from '@/lib/types'
-import { useAudioLevel } from '@/lib/useAudioLevel'
 import { useSpeechRecognition } from '@/lib/useSpeechRecognition'
 import { useTransport } from '@/lib/useTransport'
 
@@ -71,7 +70,6 @@ export default function Room({ roomId }: { roomId: string }) {
 
   const locale = languageByCode(speakLang)?.sttLocale ?? 'en-US'
   const speech = useSpeechRecognition({ locale, enabled: micOn, onInterim, onFinal })
-  const level = useAudioLevel(micOn)
 
   // Anything the reducer put into 'pending' needs a translation. The set of
   // ids already requested is what stops a re-render from firing a second call.
@@ -149,7 +147,7 @@ export default function Room({ roomId }: { roomId: string }) {
       <footer className="border-t border-white/10 px-6 py-3">
         {/* type-to-send lands here in Task 15 */}
 
-        <MicIndicator active={micOn} level={level} onToggle={() => setMicOn((on) => !on)} />
+        <MicIndicator active={micOn} onToggle={() => setMicOn((on) => !on)} />
       </footer>
     </main>
   )
