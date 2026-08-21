@@ -20,6 +20,12 @@ describe('buildSystemPrompt', () => {
     expect(buildSystemPrompt(es, en)).toContain('live speech-to-text')
   })
 
+  it('instructs the model to translate the full message even when it seems redundant given context', () => {
+    const prompt = buildSystemPrompt(es, en)
+    expect(prompt).toContain('Translate the entire message')
+    expect(prompt).toContain('sounds good')
+  })
+
   it('includes recent context when given', () => {
     const prompt = buildSystemPrompt(es, en, ['we should rebase', 'agreed'])
     expect(prompt).toContain('we should rebase')

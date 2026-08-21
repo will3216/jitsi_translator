@@ -13,6 +13,9 @@ Rules:
 - Leave untranslated: proper nouns, product and repository names, code
   identifiers, file paths, and established technical terms
   (e.g. "merge conflict", "pull request", "rebase").
+- Translate the entire message; omit or condense nothing, even when part of
+  it seems redundant given the recent conversation — an acknowledgement such
+  as "sounds good" or "right" carries meaning and must appear in the output.
 - Match the speaker's register and level of formality.
 - The input is live speech-to-text. It may lack punctuation and contain
   recognition errors. Infer intent and produce natural, fluent output.
