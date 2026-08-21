@@ -2902,14 +2902,14 @@ import { motion } from 'framer-motion'
 
 ```typescript
     <motion.article
-      className="min-h-[5.5rem] py-3"
+      className="relative min-h-[5.5rem] py-3"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18, ease: 'easeOut' }}
     >
 ```
 
-Close it with `</motion.article>`.
+Close it with `</motion.article>`. Note the added `relative`: the crossfade in Step 3 uses `mode="popLayout"`, which pops the exiting element out of layout flow and positions it absolutely — it needs a positioned ancestor, and this row is it.
 
 - [ ] **Step 3: Crossfade the translation over the source**
 
@@ -2920,7 +2920,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 ```
 
 ```typescript
-      <AnimatePresence mode="wait" initial={false}>
+      <AnimatePresence mode="popLayout" initial={false}>
         <motion.p
           key={showsTranslation ? 'translation' : 'source'}
           className="text-xl"
@@ -2933,6 +2933,8 @@ import { AnimatePresence, motion } from 'framer-motion'
         </motion.p>
       </AnimatePresence>
 ```
+
+Use `mode="popLayout"`, not `mode="wait"`. `mode="wait"` forces the outgoing element to fully exit before the incoming one mounts, which turns a single 180ms crossfade into two sequential 180ms fades with a near-zero-opacity instant at the boundary — the caption is briefly illegible. Dropping the `mode` prop entirely is also wrong: without a mode, both elements render simultaneously in normal flow and the row grows by a line for 180ms, reintroducing the layout jump earlier tasks eliminated. `popLayout` pops only the exiting element out of flow so the incoming one takes its place immediately — a true crossfade with stable row height. It depends on the `relative` added to `<motion.article>` in Step 2.
 
 - [ ] **Step 4: Leave interim rows unanimated**
 

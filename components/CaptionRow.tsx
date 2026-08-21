@@ -31,7 +31,7 @@ export function CaptionRow({
 
   return (
     <motion.article
-      className="min-h-[5.5rem] py-3"
+      className="relative min-h-[5.5rem] py-3"
       initial={reduceMotion ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18, ease: 'easeOut' }}
@@ -59,7 +59,7 @@ export function CaptionRow({
         <p className="text-base opacity-55 text-[var(--muted)]">translating…</p>
       )}
 
-      <AnimatePresence mode="wait" initial={false}>
+      <AnimatePresence mode="popLayout" initial={false}>
         <motion.p
           key={showsTranslation ? 'translation' : 'source'}
           className="text-xl"
