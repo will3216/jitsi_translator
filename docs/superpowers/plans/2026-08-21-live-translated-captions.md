@@ -1352,9 +1352,11 @@ export function useTransport(roomId: string, me: Participant): Transport {
     const onConnected = () => setConnected(true)
     const onDisconnected = () => setConnected(false)
     const onFailed = () => setConnected(false)
+    const onClosed = () => setConnected(false)
     client.connection.on('connected', onConnected)
     client.connection.on('disconnected', onDisconnected)
     client.connection.on('failed', onFailed)
+    client.connection.on('closed', onClosed)
 
     ch.subscribe(EVENT, (message) => {
       const u = message.data as Utterance
@@ -1393,12 +1395,22 @@ export function useTransport(roomId: string, me: Participant): Transport {
     }
     window.addEventListener('pagehide', handlePageHide)
 
+    // bfcache restore does not re-run this effect; a page that comes back
+    // with the connection already closed must reconnect, or the UI would
+    // otherwise keep showing the last-known `connected: true`.
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) client.connection.connect()
+    }
+    window.addEventListener('pageshow', handlePageShow)
+
     return () => {
       cancelled = true
       window.removeEventListener('pagehide', handlePageHide)
+      window.removeEventListener('pageshow', handlePageShow)
       client.connection.off('connected', onConnected)
       client.connection.off('disconnected', onDisconnected)
       client.connection.off('failed', onFailed)
+      client.connection.off('closed', onClosed)
       ch.presence.unsubscribe()
       ch.unsubscribe()
       ch.presence.leave().catch(() => {})

@@ -44,6 +44,12 @@ Run each and record the result.
       self entry on first mount.
 - [ ] Change speaking language mid-session in one window; confirm the other
       window's roster label updates and no reconnect occurs.
+- [ ] Change room (navigate to a different `/r/<id>`) and watch the
+      connection badge — it must not flicker back to connected as the old
+      client's queued state change arrives.
+- [ ] Navigate away from the room and press Back. Confirm the room either
+      reconnects on its own or clearly shows itself disconnected — it must
+      never look connected while sending and receiving nothing.
 
 ## Open questions
 
