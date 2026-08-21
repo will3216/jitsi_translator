@@ -38,18 +38,21 @@ export function CaptionRow({
 
       {/* Source sits above the target, smaller and dimmed, whenever a
           translation is being shown. When none is needed, the source IS the
-          primary line and is rendered large below instead. */}
+          primary line and is rendered large below instead. While a
+          translation is pending, this slot holds a placeholder note instead
+          of the source, so the large line's vertical position never shifts
+          when the translation lands. */}
       {showsTranslation && (
         <p className="text-base opacity-55">{utterance.text}</p>
+      )}
+
+      {utterance.translationState === 'pending' && (
+        <p className="text-base opacity-55 text-[var(--muted)]">translating…</p>
       )}
 
       <p className="text-xl">
         {showsTranslation ? utterance.translation : utterance.text}
       </p>
-
-      {utterance.translationState === 'pending' && (
-        <p className="text-xs text-[var(--muted)] opacity-70">translating…</p>
-      )}
 
       {utterance.translationState === 'failed' && (
         <p className="text-xs text-[var(--muted)] opacity-70">translation unavailable</p>

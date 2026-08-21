@@ -2212,13 +2212,13 @@ export function CaptionRow({
         <p className="text-base opacity-55">{utterance.text}</p>
       )}
 
+      {utterance.translationState === 'pending' && (
+        <p className="text-base opacity-55 text-[var(--muted)]">translating…</p>
+      )}
+
       <p className="text-xl">
         {showsTranslation ? utterance.translation : utterance.text}
       </p>
-
-      {utterance.translationState === 'pending' && (
-        <p className="text-xs text-[var(--muted)] opacity-70">translating…</p>
-      )}
 
       {utterance.translationState === 'failed' && (
         <p className="text-xs text-[var(--muted)] opacity-70">translation unavailable</p>
