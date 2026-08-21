@@ -1,0 +1,18 @@
+@import 'tailwindcss';
+
+@theme inline {
+  --font-sans: var(--font-inter);
+}
+
+:root {
+  --bg: #0b0b0d;
+  --fg: #f4f4f5;
+  --muted: #a1a1aa;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+}

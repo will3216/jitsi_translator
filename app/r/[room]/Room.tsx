@@ -104,56 +104,72 @@ export default function Room({ roomId }: { roomId: string }) {
   }, [state.utterances])
 
   return (
-    <main>
-      <p>room {roomId}</p>
-      <p>connected: {String(transport.connected)}</p>
-      <p>speech supported: {String(speech.supported)}</p>
-      <p>speech error: {speech.error ?? 'none'}</p>
+    <main className="grid h-screen grid-rows-[auto_1fr_auto] overflow-hidden">
+      <header className="border-b border-white/10 px-6 py-3">
+        <div className="flex items-baseline justify-between">
+          <span className="text-sm font-medium tracking-tight">polyglot</span>
+          <span className="text-xs text-[var(--muted)]">
+            {transport.connected ? '●' : '○'} room {roomId}
+          </span>
+        </div>
+        {/* pickers land here in Task 11, roster in Task 13 */}
 
-      <label>
-        I speak{' '}
-        <select value={speakLang} onChange={(e) => setSpeakLang(e.target.value as LangCode)}>
-          {LANGUAGES.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.label}
-            </option>
+        <p>speech supported: {String(speech.supported)}</p>
+        <p>speech error: {speech.error ?? 'none'}</p>
+
+        <label>
+          I speak{' '}
+          <select value={speakLang} onChange={(e) => setSpeakLang(e.target.value as LangCode)}>
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Show me{' '}
+          <select value={showLang} onChange={(e) => setShowLang(e.target.value as LangCode)}>
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <ul>
+          {state.participants.map((p) => (
+            <li key={p.id}>
+              {p.name} ({p.srcLang})
+            </li>
           ))}
-        </select>
-      </label>
+        </ul>
+      </header>
 
-      <label>
-        Show me{' '}
-        <select value={showLang} onChange={(e) => setShowLang(e.target.value as LangCode)}>
-          {LANGUAGES.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.label}
-            </option>
+      <section className="overflow-y-auto px-6 py-4">
+        {/* caption stream lands here in Task 12 */}
+
+        <ol>
+          {state.utterances.map((u) => (
+            <li key={u.id}>
+              <b>{u.speakerName}</b> [{u.srcLang}] {u.text}
+              {u.translationState === 'pending' && <> — translating…</>}
+              {u.translationState === 'done' && <> — {u.translation}</>}
+              {u.translationState === 'failed' && <> — translation unavailable</>}
+            </li>
           ))}
-        </select>
-      </label>
+        </ol>
+      </section>
 
-      <button onClick={() => setMicOn((on) => !on)}>
-        {micOn ? 'stop mic' : 'start mic'}
-      </button>
+      <footer className="border-t border-white/10 px-6 py-3">
+        {/* mic, meter, and type-to-send land here in Tasks 14 and 15 */}
 
-      <ul>
-        {state.participants.map((p) => (
-          <li key={p.id}>
-            {p.name} ({p.srcLang})
-          </li>
-        ))}
-      </ul>
-
-      <ol>
-        {state.utterances.map((u) => (
-          <li key={u.id}>
-            <b>{u.speakerName}</b> [{u.srcLang}] {u.text}
-            {u.translationState === 'pending' && <> — translating…</>}
-            {u.translationState === 'done' && <> — {u.translation}</>}
-            {u.translationState === 'failed' && <> — translation unavailable</>}
-          </li>
-        ))}
-      </ol>
+        <button onClick={() => setMicOn((on) => !on)}>
+          {micOn ? 'stop mic' : 'start mic'}
+        </button>
+      </footer>
     </main>
   )
 }
