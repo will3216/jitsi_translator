@@ -2834,14 +2834,14 @@ In the footer of `app/r/[room]/Room.tsx`, beneath the controls. Type-to-send sta
 
 - [ ] **Step 4: Add the ghosted empty state**
 
-In `components/CaptionStream.tsx`, when there is nothing to show. Low opacity and no timestamp, so it teaches the layout without being mistaken for content:
+In `components/CaptionStream.tsx`, when there is nothing to show. Low opacity and no timestamp, so it teaches the layout without being mistaken for content. The source line and the container's minimum height must match `CaptionRow` exactly (`text-base opacity-55`, `min-h-[5.5rem]`) — the source line is a sibling of the `text-xl` line here, not a descendant, so `em`-based sizing resolves against the ambient 16px instead of `text-xl`'s 20px and silently drifts to the wrong ratio:
 
 ```typescript
   if (finalized.length === 0 && interim.length === 0) {
     return (
-      <div className="pointer-events-none select-none py-3 opacity-25">
+      <div className="min-h-[5.5rem] pointer-events-none select-none py-3 opacity-25">
         <p className="text-xs">● Ana · Español</p>
-        <p className="text-[0.8em] opacity-55">Creo que deberíamos fusionar ese PR primero</p>
+        <p className="text-base opacity-55">Creo que deberíamos fusionar ese PR primero</p>
         <p className="text-xl">I think we should merge that PR first.</p>
       </div>
     )
