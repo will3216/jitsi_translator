@@ -28,9 +28,12 @@ export default function Room({
   const [state, dispatch] = useReducer(roomReducer, initialRoomState)
   const [languages, setLanguages] = useState(() => {
     if (!speakParam && !showParam) return initialLanguageSelection
+    const speak = languageByCode(speakParam ?? '')?.code ?? 'en'
     return {
-      speak: languageByCode(speakParam ?? '')?.code ?? 'en',
-      show: languageByCode(showParam ?? '')?.code ?? 'en',
+      speak,
+      // "Show me" follows "I speak" unless it was given explicitly —
+      // the same rule nextLanguageSelection applies at runtime.
+      show: showParam ? (languageByCode(showParam)?.code ?? 'en') : speak,
       showTouched: Boolean(showParam),
     }
   })

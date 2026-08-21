@@ -2674,7 +2674,9 @@ The `first` helper matters: a URL like `?show=en&show=es` yields an array, and p
 into `languageByCode` would silently fall back to `'en'` rather than honouring the first value.
 
 In `app/r/[room]/Room.tsx`, take the two new optional props and seed `languages` from them — no
-`window` access at all:
+`window` access at all. The seed must obey the same follow rule `nextLanguageSelection` applies at
+runtime ("Show me" tracks "I speak" until touched directly): `?speak=es` alone should seed
+`show='es'` too, not silently fall back to `'en'` and hand a Spanish speaker an English-reading room.
 
 ```typescript
 export default function Room({
@@ -2689,9 +2691,12 @@ export default function Room({
   const [state, dispatch] = useReducer(roomReducer, initialRoomState)
   const [languages, setLanguages] = useState(() => {
     if (!speakParam && !showParam) return initialLanguageSelection
+    const speak = languageByCode(speakParam ?? '')?.code ?? 'en'
     return {
-      speak: languageByCode(speakParam ?? '')?.code ?? 'en',
-      show: languageByCode(showParam ?? '')?.code ?? 'en',
+      speak,
+      // "Show me" follows "I speak" unless it was given explicitly —
+      // the same rule nextLanguageSelection applies at runtime.
+      show: showParam ? (languageByCode(showParam)?.code ?? 'en') : speak,
       showTouched: Boolean(showParam),
     }
   })
