@@ -34,7 +34,7 @@
           program = toString (pkgs.writeShellScript "dev" ''
             if [ ! -f package.json ]; then
               echo "error: run this from a checkout of the repository." >&2
-              echo "  git clone <repo> && cd jitsi_translator && nix run" >&2
+              echo "  git clone git@github.com:will3216/jitsi_translator.git && cd jitsi_translator && nix run" >&2
               exit 1
             fi
             export PATH="${pkgs.nodejs_22}/bin:$PATH"

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 
 export default function Home() {
-  const room = Math.random().toString(36).slice(2, 8)
+  const room = crypto.randomUUID().slice(0, 8)
   redirect(`/r/${room}`)
 }
