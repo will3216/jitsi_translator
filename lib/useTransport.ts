@@ -54,12 +54,15 @@ export function useTransport(roomId: string, me: Participant): Transport {
     client.connection.on('failed', onFailed)
     client.connection.on('closed', onClosed)
 
+    // Ably's subscribe() resolves an implicit attach(). React Strict Mode
+    // double-mounts in dev, so cleanup can close the connection before that
+    // attach settles; the resulting rejection is expected and has nothing to act on.
     ch.subscribe(EVENT, (message) => {
       const u = message.data as Utterance
       // Our own utterances already rendered locally on recognition.
       if (u.speakerId === meRef.current.id) return
       for (const cb of subscribers.current) cb(u)
-    })
+    }).catch(() => {})
 
     const syncPresence = async () => {
       const members = await ch.presence.get()
@@ -76,9 +79,14 @@ export function useTransport(roomId: string, me: Participant): Transport {
       setParticipants(Array.from(byClientId.values()))
     }
 
-    ch.presence.subscribe(['enter', 'leave', 'update'], () => {
-      syncPresence().catch(() => {})
-    })
+    // Ably's subscribe() resolves an implicit attach(). React Strict Mode
+    // double-mounts in dev, so cleanup can close the connection before that
+    // attach settles; the resulting rejection is expected and has nothing to act on.
+    ch.presence
+      .subscribe(['enter', 'leave', 'update'], () => {
+        syncPresence().catch(() => {})
+      })
+      .catch(() => {})
     ch.presence
       .enter({ name: meRef.current.name, srcLang: meRef.current.srcLang })
       .then(syncPresence)
