@@ -40,12 +40,16 @@ export function CaptionRow({
           translation is being shown. When none is needed, the source IS the
           primary line and is rendered large below instead. */}
       {showsTranslation && (
-        <p className="text-[0.8em] opacity-55">{utterance.text}</p>
+        <p className="text-base opacity-55">{utterance.text}</p>
       )}
 
       <p className="text-xl">
         {showsTranslation ? utterance.translation : utterance.text}
       </p>
+
+      {utterance.translationState === 'pending' && (
+        <p className="text-xs text-[var(--muted)] opacity-70">translating…</p>
+      )}
 
       {utterance.translationState === 'failed' && (
         <p className="text-xs text-[var(--muted)] opacity-70">translation unavailable</p>
