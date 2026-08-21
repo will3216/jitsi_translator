@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { CaptionStream } from '@/components/CaptionStream'
 import { LanguagePicker } from '@/components/LanguagePicker'
 import { languageByCode } from '@/lib/languages'
 import { initialLanguageSelection, nextLanguageSelection } from '@/lib/languageSelection'
@@ -146,18 +147,7 @@ export default function Room({ roomId }: { roomId: string }) {
       </header>
 
       <section className="overflow-y-auto px-6 py-4">
-        {/* caption stream lands here in Task 12 */}
-
-        <ol>
-          {state.utterances.map((u) => (
-            <li key={u.id}>
-              <b>{u.speakerName}</b> [{u.srcLang}] {u.text}
-              {u.translationState === 'pending' && <> — translating…</>}
-              {u.translationState === 'done' && <> — {u.translation}</>}
-              {u.translationState === 'failed' && <> — translation unavailable</>}
-            </li>
-          ))}
-        </ol>
+        <CaptionStream utterances={state.utterances} />
       </section>
 
       <footer className="border-t border-white/10 px-6 py-3">
