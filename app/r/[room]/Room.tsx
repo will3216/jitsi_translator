@@ -5,6 +5,7 @@ import { CaptionStream } from '@/components/CaptionStream'
 import { LanguagePicker } from '@/components/LanguagePicker'
 import { MicIndicator } from '@/components/MicIndicator'
 import { Roster } from '@/components/Roster'
+import { TypeToSend } from '@/components/TypeToSend'
 import { languageByCode } from '@/lib/languages'
 import { initialLanguageSelection, nextLanguageSelection } from '@/lib/languageSelection'
 import { initialRoomState, roomReducer } from '@/lib/roomReducer'
@@ -67,6 +68,11 @@ export default function Room({ roomId }: { roomId: string }) {
     [emit],
   )
   const onFinal = useCallback((id: string, text: string) => emit(id, text, true), [emit])
+
+  const sendTyped = useCallback(
+    (text: string) => emit(crypto.randomUUID(), text, true),
+    [emit],
+  )
 
   const locale = languageByCode(speakLang)?.sttLocale ?? 'en-US'
   const speech = useSpeechRecognition({ locale, enabled: micOn, onInterim, onFinal })
@@ -144,9 +150,8 @@ export default function Room({ roomId }: { roomId: string }) {
         <CaptionStream utterances={state.utterances} />
       </section>
 
-      <footer className="border-t border-white/10 px-6 py-3">
-        {/* type-to-send lands here in Task 15 */}
-
+      <footer className="flex items-center gap-4 border-t border-white/10 px-6 py-3">
+        <TypeToSend onSend={sendTyped} />
         <MicIndicator active={micOn} onToggle={() => setMicOn((on) => !on)} />
       </footer>
     </main>
