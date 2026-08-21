@@ -19,3 +19,6 @@ result-*
 
 # os
 .DS_Store
+
+# sdd controller scratch (ledger, briefs, review packages)
+.superpowers/
