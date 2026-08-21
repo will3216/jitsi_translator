@@ -1108,8 +1108,8 @@ interface SpeechRecognitionLike {
   continuous: boolean
   interimResults: boolean
   start(): void
-  stop(): void
   abort(): void
+  onstart: (() => void) | null
   onresult: ((e: SpeechRecognitionEvent) => void) | null
   onerror: ((e: SpeechRecognitionErrorEvent) => void) | null
   onend: (() => void) | null
@@ -1151,7 +1151,6 @@ export function useSpeechRecognition({
   const wantActive = useRef(false)
   const backoff = useRef(0)
   const currentId = useRef<string | null>(null)
-  const recognition = useRef<SpeechRecognitionLike | null>(null)
   const restartTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Keep callbacks in refs so changing them never tears down the recognizer.
@@ -1178,7 +1177,6 @@ export function useSpeechRecognition({
     if (!Ctor || !enabled) return
 
     const rec = new Ctor()
-    recognition.current = rec
     rec.lang = locale
     rec.continuous = true
     rec.interimResults = true
@@ -1193,19 +1191,22 @@ export function useSpeechRecognition({
       }
     }
 
+    rec.onstart = () => {
+      setListening(true)
+    }
+
     rec.onresult = (event) => {
       backoff.current = 0
       setError(null)
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i]
         const text = result[0].transcript.trim()
-        if (text.length === 0) continue
-        const id = mintId()
+
         if (result.isFinal) {
-          finalCb.current(id, text)
-          currentId.current = null // next utterance gets a fresh id
-        } else {
-          interimCb.current(id, text)
+          if (text.length > 0) finalCb.current(mintId(), text)
+          currentId.current = null // always clear on final, even when empty
+        } else if (text.length > 0) {
+          interimCb.current(mintId(), text)
         }
       }
     }
@@ -1214,7 +1215,7 @@ export function useSpeechRecognition({
       setError(event.error)
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         wantActive.current = false // stop trying; the user must intervene
-      } else if (event.error === 'no-speech' || event.error === 'network') {
+      } else {
         backoff.current = Math.min(backoff.current * 2 + 250, MAX_BACKOFF_MS)
       }
     }
@@ -1232,7 +1233,11 @@ export function useSpeechRecognition({
 
     return () => {
       wantActive.current = false
-      if (restartTimer.current) clearTimeout(restartTimer.current)
+      if (restartTimer.current) {
+        clearTimeout(restartTimer.current)
+        restartTimer.current = null
+      }
+      rec.onstart = null
       rec.onresult = null
       rec.onerror = null
       rec.onend = null
@@ -1241,7 +1246,7 @@ export function useSpeechRecognition({
       } catch {
         /* already stopped */
       }
-      recognition.current = null
+      currentId.current = null
       setListening(false)
     }
     // `locale` is a dependency because SpeechRecognition.lang cannot change

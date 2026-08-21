@@ -14,5 +14,19 @@ Chrome desktop only. Run each and record the result.
       a page reload.
 - [ ] Change the spoken language mid-session. Expect: recognizer stops and
       restarts in the new locale; no `InvalidStateError` in the console.
+- [ ] Unplug or disable the microphone **mid-session**, after permission was
+      granted and results were flowing. Expect a growing backoff, not a 0ms
+      restart storm. (The existing "deny the mic" item takes the
+      `not-allowed` branch and does not cover this.)
+- [ ] Speak, stay silent long enough for Chrome to end and re-arm the
+      session, then speak again. Confirm `listening` is `true` while results
+      flow, not stuck `false`.
+- [ ] Change the spoken language **mid-utterance** — while a partial caption
+      is on screen, not during silence — and confirm the first caption in
+      the new language does **not** replace the old partial.
 
 ## Open questions
+
+- `crypto.randomUUID` requires a secure context, so opening the app over
+  plain `http://` on a LAN IP (rather than `localhost`) will throw on the
+  first result.
