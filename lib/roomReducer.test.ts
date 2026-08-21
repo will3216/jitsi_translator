@@ -76,3 +76,80 @@ describe('roomReducer — presence', () => {
     expect(state.utterances).toHaveLength(1)
   })
 })
+
+describe('roomReducer — translation state machine', () => {
+  it('marks a foreign-language final utterance pending', () => {
+    const state = receive(initialRoomState, utterance({ srcLang: 'es', isFinal: true }), 'en')
+    expect(state.utterances[0].translationState).toBe('pending')
+  })
+
+  it('never marks an interim utterance pending', () => {
+    const state = receive(initialRoomState, utterance({ srcLang: 'es', isFinal: false }), 'en')
+    expect(state.utterances[0].translationState).toBe('none')
+  })
+
+  it('needs no translation when the source is already my target', () => {
+    const state = receive(initialRoomState, utterance({ srcLang: 'en', isFinal: true }), 'en')
+    expect(state.utterances[0].translationState).toBe('none')
+  })
+
+  it('patches in a completed translation', () => {
+    let state = receive(initialRoomState, utterance({ srcLang: 'es', isFinal: true }), 'en')
+    state = roomReducer(state, {
+      type: 'translation/succeeded',
+      id: 'u1',
+      translation: 'hello',
+    })
+    expect(state.utterances[0].translationState).toBe('done')
+    expect(state.utterances[0].translation).toBe('hello')
+  })
+
+  it('marks a failed translation without dropping the utterance', () => {
+    let state = receive(initialRoomState, utterance({ srcLang: 'es', isFinal: true }), 'en')
+    state = roomReducer(state, { type: 'translation/failed', id: 'u1' })
+    expect(state.utterances[0].translationState).toBe('failed')
+    expect(state.utterances[0].text).toBe('hola')
+  })
+
+  it('ignores a translation result for an utterance that is not pending', () => {
+    let state = receive(initialRoomState, utterance({ srcLang: 'en', isFinal: true }), 'en')
+    state = roomReducer(state, {
+      type: 'translation/succeeded',
+      id: 'u1',
+      translation: 'should not appear',
+    })
+    expect(state.utterances[0].translationState).toBe('none')
+    expect(state.utterances[0].translation).toBeUndefined()
+  })
+
+  it('lets an id leave pending exactly once', () => {
+    let state = receive(initialRoomState, utterance({ srcLang: 'es', isFinal: true }), 'en')
+    state = roomReducer(state, { type: 'translation/succeeded', id: 'u1', translation: 'hello' })
+    state = roomReducer(state, { type: 'translation/succeeded', id: 'u1', translation: 'clobbered' })
+    expect(state.utterances[0].translation).toBe('hello')
+  })
+
+  it('does not re-trigger translation when a stale interim lands after done', () => {
+    let state = receive(initialRoomState, utterance({ srcLang: 'es', isFinal: true }), 'en')
+    state = roomReducer(state, { type: 'translation/succeeded', id: 'u1', translation: 'hello' })
+    state = receive(state, utterance({ srcLang: 'es', isFinal: false, text: 'stale' }), 'en')
+    expect(state.utterances[0].translationState).toBe('done')
+    expect(state.utterances[0].translation).toBe('hello')
+  })
+
+  it('does not reset a completed translation when a second final arrives', () => {
+    let state = receive(initialRoomState, utterance({ srcLang: 'es', isFinal: true }), 'en')
+    state = roomReducer(state, { type: 'translation/succeeded', id: 'u1', translation: 'hello' })
+    state = receive(state, utterance({ srcLang: 'es', isFinal: true, text: 'edited final' }), 'en')
+    expect(state.utterances[0].translationState).toBe('done')
+    expect(state.utterances[0].translation).toBe('hello')
+    expect(state.utterances[0].text).toBe('edited final')
+  })
+
+  it('preserves both utterances and relative order when two share an identical timestamp', () => {
+    let state = receive(initialRoomState, utterance({ id: 'a', ts: 1000 }))
+    state = receive(state, utterance({ id: 'b', ts: 1000 }))
+    expect(state.utterances).toHaveLength(2)
+    expect(state.utterances.map((u) => u.id)).toEqual(['a', 'b'])
+  })
+})

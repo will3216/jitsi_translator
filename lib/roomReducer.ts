@@ -8,6 +8,8 @@ export interface RoomState {
 export type RoomAction =
   | { type: 'utterance/received'; utterance: Utterance; myTarget: LangCode }
   | { type: 'participants/synced'; participants: Participant[] }
+  | { type: 'translation/succeeded'; id: string; translation: string }
+  | { type: 'translation/failed'; id: string }
 
 export const initialRoomState: RoomState = {
   utterances: [],
@@ -15,10 +17,14 @@ export const initialRoomState: RoomState = {
 }
 
 function stateForUtterance(
-  _u: Utterance,
-  _myTarget: LangCode,
+  u: Utterance,
+  myTarget: LangCode,
 ): RenderedUtterance['translationState'] {
-  return 'none'
+  // Interim text is never translated — it is about to change.
+  if (!u.isFinal) return 'none'
+  // Source already matches my target: render the source as the primary line.
+  if (u.srcLang === myTarget) return 'none'
+  return 'pending'
 }
 
 function byTimestamp(a: RenderedUtterance, b: RenderedUtterance): number {
@@ -47,6 +53,10 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
         text: incoming.text,
         isFinal: incoming.isFinal,
         ts: existing.ts, // first emit wins
+        translationState:
+          incoming.isFinal && !existing.isFinal
+            ? stateForUtterance(incoming, action.myTarget)
+            : existing.translationState,
       }
 
       return {
@@ -59,6 +69,26 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
 
     case 'participants/synced':
       return { ...state, participants: action.participants }
+
+    case 'translation/succeeded':
+      return {
+        ...state,
+        utterances: state.utterances.map((u) =>
+          u.id === action.id && u.translationState === 'pending'
+            ? { ...u, translation: action.translation, translationState: 'done' as const }
+            : u,
+        ),
+      }
+
+    case 'translation/failed':
+      return {
+        ...state,
+        utterances: state.utterances.map((u) =>
+          u.id === action.id && u.translationState === 'pending'
+            ? { ...u, translationState: 'failed' as const }
+            : u,
+        ),
+      }
 
     default:
       return state
