@@ -2631,6 +2631,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 **Files:**
 - Create: `components/SecondWindowButton.tsx`
 - Modify: `app/r/[room]/Room.tsx`
+- Modify: `app/r/[room]/page.tsx`
 
 **Interfaces:**
 - Consumes: `LANGUAGES`, `languageByCode` from `lib/languages.ts`; `LangCode` from `lib/types.ts`.
@@ -2640,22 +2641,64 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 - [ ] **Step 1: Support language presets in the room URL**
 
-In `app/r/[room]/Room.tsx`, seed the language selection from the query string. Reading `window.location` inside the initializer keeps this client-only and avoids a hydration mismatch:
+`Room.tsx` is server-rendered before it's hydrated, so a lazy `useState` initializer that reads
+`window.location` only on the client (guarded by `typeof window === 'undefined'`) does **not** avoid
+a hydration mismatch — it just avoids a server-side crash. The initializer still runs again during
+the client's hydration render, at which point `window` is defined, so it can compute a different
+`languages` value than the server used, producing mismatched server/client output (e.g. the "Open a
+second window as …" label reflecting different `otherLang` values). The fix is to read the query
+string on the server and pass it down as props, so both renders agree from the start.
+
+In `app/r/[room]/page.tsx`, read `searchParams` (a `Promise` in Next 16) and pass the raw string
+values through:
 
 ```typescript
+import Room from './Room'
+
+export default async function RoomPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ room: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const { room } = await params
+  const query = await searchParams
+  const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)
+
+  return <Room roomId={room} speakParam={first(query.speak)} showParam={first(query.show)} />
+}
+```
+
+The `first` helper matters: a URL like `?show=en&show=es` yields an array, and passing that straight
+into `languageByCode` would silently fall back to `'en'` rather than honouring the first value.
+
+In `app/r/[room]/Room.tsx`, take the two new optional props and seed `languages` from them — no
+`window` access at all:
+
+```typescript
+export default function Room({
+  roomId,
+  speakParam,
+  showParam,
+}: {
+  roomId: string
+  speakParam?: string
+  showParam?: string
+}) {
+  const [state, dispatch] = useReducer(roomReducer, initialRoomState)
   const [languages, setLanguages] = useState(() => {
-    if (typeof window === 'undefined') return initialLanguageSelection
-    const params = new URLSearchParams(window.location.search)
-    const show = params.get('show')
-    const speak = params.get('speak')
-    if (!show && !speak) return initialLanguageSelection
+    if (!speakParam && !showParam) return initialLanguageSelection
     return {
-      speak: (languageByCode(speak ?? '')?.code ?? 'en') as LangCode,
-      show: (languageByCode(show ?? '')?.code ?? 'en') as LangCode,
-      showTouched: Boolean(show),
+      speak: languageByCode(speakParam ?? '')?.code ?? 'en',
+      show: languageByCode(showParam ?? '')?.code ?? 'en',
+      showTouched: Boolean(showParam),
     }
   })
 ```
+
+Note `languageByCode(...)?.code` is already typed as `LangCode`, so no `as LangCode` cast is needed
+here (that cast was only ever required to launder a `window`-derived string).
 
 - [ ] **Step 2: Write the button**
 

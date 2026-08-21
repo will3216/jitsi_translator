@@ -16,18 +16,22 @@ import { useTransport } from '@/lib/useTransport'
 
 const CONTEXT_SIZE = 3
 
-export default function Room({ roomId }: { roomId: string }) {
+export default function Room({
+  roomId,
+  speakParam,
+  showParam,
+}: {
+  roomId: string
+  speakParam?: string
+  showParam?: string
+}) {
   const [state, dispatch] = useReducer(roomReducer, initialRoomState)
   const [languages, setLanguages] = useState(() => {
-    if (typeof window === 'undefined') return initialLanguageSelection
-    const params = new URLSearchParams(window.location.search)
-    const show = params.get('show')
-    const speak = params.get('speak')
-    if (!show && !speak) return initialLanguageSelection
+    if (!speakParam && !showParam) return initialLanguageSelection
     return {
-      speak: (languageByCode(speak ?? '')?.code ?? 'en') as LangCode,
-      show: (languageByCode(show ?? '')?.code ?? 'en') as LangCode,
-      showTouched: Boolean(show),
+      speak: languageByCode(speakParam ?? '')?.code ?? 'en',
+      show: languageByCode(showParam ?? '')?.code ?? 'en',
+      showTouched: Boolean(showParam),
     }
   })
   const speakLang = languages.speak
