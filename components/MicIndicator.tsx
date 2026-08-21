@@ -29,16 +29,20 @@ export function MicIndicator({
         aria-label={error ? 'microphone unavailable' : undefined}
         aria-hidden={error ? undefined : true}
       >
-        {BARS.map((weight, i) => (
-          <span
-            key={i}
-            className="w-1 rounded-full bg-[var(--fg)]"
-            style={{
-              height: `${error ? 2 : Math.max(2, level * weight * 100)}%`,
-              opacity: error ? 0.1 : active ? 0.8 : 0.2,
-            }}
-          />
-        ))}
+        {error ? (
+          <span className="h-[2px] w-9 rounded-full bg-[var(--muted)] opacity-60" />
+        ) : (
+          BARS.map((weight, i) => (
+            <span
+              key={i}
+              className="w-1 rounded-full bg-[var(--fg)]"
+              style={{
+                height: `${Math.max(2, level * weight * 100)}%`,
+                opacity: active ? 0.8 : 0.2,
+              }}
+            />
+          ))
+        )}
       </div>
     </div>
   )

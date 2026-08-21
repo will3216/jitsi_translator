@@ -2450,7 +2450,7 @@ export function useAudioLevel(active: boolean): { level: number; error: boolean 
 
 - [ ] **Step 2: Write the indicator**
 
-Create `components/MicIndicator.tsx`. `useAudioLevel` is called here, not in `Room`, so the room's caption tree does not re-render on every animation frame while the mic is live. When `error` is set, the bars collapse to a visibly dead state (not just flat-and-fine) and the meter carries an accessible `"microphone unavailable"` label — this is the meter's own legibility, distinct from Task 17's mic-denied recovery screen, which is driven by `speech.error` on a different hook:
+Create `components/MicIndicator.tsx`. `useAudioLevel` is called here, not in `Room`, so the room's caption tree does not re-render on every animation frame while the mic is live. When `error` is set, the five bars are replaced by a single dead horizontal flatline (`w-9` matches the five-bar footprint exactly, so nothing shifts) — a shape difference, not just an opacity difference, so it reads at a glance and doesn't rely on color alone. The meter also carries an accessible `"microphone unavailable"` label — this is the meter's own legibility, distinct from Task 17's mic-denied recovery screen, which is driven by `speech.error` on a different hook:
 
 ```typescript
 'use client'
@@ -2484,16 +2484,20 @@ export function MicIndicator({
         aria-label={error ? 'microphone unavailable' : undefined}
         aria-hidden={error ? undefined : true}
       >
-        {BARS.map((weight, i) => (
-          <span
-            key={i}
-            className="w-1 rounded-full bg-[var(--fg)]"
-            style={{
-              height: `${error ? 2 : Math.max(2, level * weight * 100)}%`,
-              opacity: error ? 0.1 : active ? 0.8 : 0.2,
-            }}
-          />
-        ))}
+        {error ? (
+          <span className="h-[2px] w-9 rounded-full bg-[var(--muted)] opacity-60" />
+        ) : (
+          BARS.map((weight, i) => (
+            <span
+              key={i}
+              className="w-1 rounded-full bg-[var(--fg)]"
+              style={{
+                height: `${Math.max(2, level * weight * 100)}%`,
+                opacity: active ? 0.8 : 0.2,
+              }}
+            />
+          ))
+        )}
       </div>
     </div>
   )
