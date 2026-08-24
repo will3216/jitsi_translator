@@ -2,15 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Ably from 'ably'
-import type { Participant, Utterance } from './types'
+import type { Participant, Transport, Utterance } from './types'
 import { languageByCode } from './languages'
-
-export interface Transport {
-  publish(u: Utterance): void
-  subscribe(cb: (u: Utterance) => void): () => void
-  participants: Participant[]
-  connected: boolean
-}
 
 const EVENT = 'utterance'
 const INTERIM_THROTTLE_MS = 150

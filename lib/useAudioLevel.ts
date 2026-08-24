@@ -6,8 +6,13 @@ export function useAudioLevel(active: boolean): { level: number; error: boolean 
   const [level, setLevel] = useState(0)
   const [error, setError] = useState(false)
 
+  // The setState calls below reset the meter when the mic is switched off and
+  // report a getUserMedia rejection. Both are one-shot edges driven by an
+  // external system (the media device), not a render-derived value, so they
+  // cannot cascade.
   useEffect(() => {
     if (!active) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- see above
       setLevel(0)
       setError(false)
       return

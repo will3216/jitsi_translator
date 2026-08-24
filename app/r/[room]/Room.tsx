@@ -7,7 +7,6 @@ import { MicIndicator } from '@/components/MicIndicator'
 import { Roster } from '@/components/Roster'
 import { SecondWindowButton } from '@/components/SecondWindowButton'
 import { TypeToSend } from '@/components/TypeToSend'
-import { UnsupportedScreen } from '@/components/UnsupportedScreen'
 import { languageByCode } from '@/lib/languages'
 import { initialLanguageSelection, nextLanguageSelection } from '@/lib/languageSelection'
 import { initialRoomState, roomReducer } from '@/lib/roomReducer'
@@ -16,6 +15,37 @@ import { useSpeechRecognition } from '@/lib/useSpeechRecognition'
 import { useTransport } from '@/lib/useTransport'
 
 const CONTEXT_SIZE = 3
+
+/**
+ * True only once `value` has stayed true for `ms`. The transport is legitimately
+ * not connected for the first second or two of every load; shouting "not
+ * connected" during a normal handshake would train the reader to ignore the
+ * banner, which is exactly the failure this banner exists to prevent.
+ */
+function useSettled(value: boolean, ms: number): boolean {
+  const [settled, setSettled] = useState(false)
+
+  useEffect(() => {
+    if (!value) return
+    const timer = setTimeout(() => setSettled(true), ms)
+    // Reset on the way out (value went false, or unmount) rather than in the
+    // effect body — a synchronous setState there would cascade a render.
+    return () => {
+      clearTimeout(timer)
+      setSettled(false)
+    }
+  }, [value, ms])
+
+  return settled
+}
+
+function Banner({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-white/10 bg-white/5 px-4 py-3 text-sm text-[var(--muted)]">
+      {children}
+    </div>
+  )
+}
 
 export default function Room({
   roomId,
@@ -51,8 +81,32 @@ export default function Room({
   )
 
   const transport = useTransport(roomId, me)
+
+  // Read by the transport subscription and by the translate effect, both of
+  // which run after commit — so this is written in an effect rather than
+  // during render, which React Compiler (rightly) forbids.
   const showLangRef = useRef(showLang)
-  showLangRef.current = showLang
+
+  // Anything the reducer put into 'pending' needs a translation. The set of
+  // ids already requested is what stops a re-render from firing a second call.
+  const requested = useRef(new Set<string>())
+
+  // Bumped every time "Show me" changes. A reply from a request issued under
+  // the old target must not be written onto an utterance that has since been
+  // re-queued for a different language.
+  const targetGeneration = useRef(0)
+
+  // Changing "Show me" has to re-translate what is already on screen —
+  // otherwise the reader switches language and every caption they can see
+  // stays in the one they could not read. Clearing `requested` is not
+  // optional: without it the guard above blocks every re-request and the
+  // re-target is silently a no-op.
+  useEffect(() => {
+    showLangRef.current = showLang
+    requested.current.clear()
+    targetGeneration.current += 1
+    dispatch({ type: 'target/changed', myTarget: showLang })
+  }, [showLang])
 
   // Receive remote utterances.
   useEffect(() => {
@@ -100,10 +154,6 @@ export default function Room({
   const locale = languageByCode(speakLang)?.sttLocale ?? 'en-US'
   const speech = useSpeechRecognition({ locale, enabled: micOn, onInterim, onFinal })
 
-  // Anything the reducer put into 'pending' needs a translation. The set of
-  // ids already requested is what stops a re-render from firing a second call.
-  const requested = useRef(new Set<string>())
-
   useEffect(() => {
     const pending = state.utterances.filter(
       (u) => u.translationState === 'pending' && !requested.current.has(u.id),
@@ -111,6 +161,7 @@ export default function Room({
 
     for (const u of pending) {
       requested.current.add(u.id)
+      const generation = targetGeneration.current
 
       const context = state.utterances
         .filter((c) => c.isFinal && c.id !== u.id)
@@ -131,14 +182,21 @@ export default function Room({
           if (!res.ok) throw new Error(`translate failed: ${res.status}`)
           return (await res.json()) as { translation: string }
         })
-        .then(({ translation }) =>
-          dispatch({ type: 'translation/succeeded', id: u.id, translation }),
-        )
-        .catch(() => dispatch({ type: 'translation/failed', id: u.id }))
+        .then(({ translation }) => {
+          if (targetGeneration.current !== generation) return
+          dispatch({ type: 'translation/succeeded', id: u.id, translation })
+        })
+        .catch(() => {
+          if (targetGeneration.current !== generation) return
+          dispatch({ type: 'translation/failed', id: u.id })
+        })
     }
   }, [state.utterances])
 
-  if (speech.supported === false && micOn) return <UnsupportedScreen />
+  // `supported` is null until the capability probe runs after mount, so this
+  // stays false on the first render in every browser — no unsupported flash.
+  const micUnsupported = speech.supported === false
+  const disconnected = useSettled(!transport.connected, 2500)
 
   return (
     <main className="grid h-screen grid-rows-[auto_1fr_auto] overflow-hidden">
@@ -169,20 +227,43 @@ export default function Room({
       </header>
 
       <section className="overflow-y-auto px-6 py-4">
-        {alone ? (
-          <div className="flex h-full flex-col items-start justify-center gap-4">
-            <p className="text-[var(--muted)]">You&apos;re the only one here.</p>
+        {/* Banners only ever sit above the stream. Nothing may replace it:
+            an utterance that was accepted must always be on screen, and a
+            room whose transport is dead is exactly when that matters most. */}
+        {disconnected ? (
+          <Banner>
+            {/* Deliberately no second-window button: opening another window
+                cannot repair a connection that is not there. */}
+            Not connected to the room. Anything you say or type is still shown
+            here, but it is not reaching anyone else yet.
+          </Banner>
+        ) : alone ? (
+          <Banner>
+            <span>You&apos;re the only one here.</span>
             <SecondWindowButton roomId={roomId} otherLang={otherLang} />
-          </div>
-        ) : (
-          <CaptionStream utterances={state.utterances} />
+          </Banner>
+        ) : null}
+
+        {micUnsupported && (
+          <Banner>
+            Live captions from your voice need the browser&apos;s built-in speech
+            recognition, which only desktop Chrome provides. Everything else works
+            here — you can read the room and type below.
+          </Banner>
         )}
+
+        <CaptionStream utterances={state.utterances} />
       </section>
 
       <footer className="border-t border-white/10 px-6 py-3">
         <div className="flex items-center gap-4">
           <TypeToSend onSend={sendTyped} />
-          <MicIndicator active={micOn} onToggle={() => setMicOn((on) => !on)} />
+          <MicIndicator
+            active={micOn}
+            onToggle={() => setMicOn((on) => !on)}
+            disabled={micUnsupported}
+            title={micUnsupported ? 'Speech recognition needs desktop Chrome' : undefined}
+          />
         </div>
         {speech.error === 'not-allowed' && (
           <p className="mt-2 text-xs text-[var(--muted)]">

@@ -7,9 +7,14 @@ const BARS = [0.15, 0.4, 0.7, 0.4, 0.15]
 export function MicIndicator({
   active,
   onToggle,
+  disabled = false,
+  title,
 }: {
   active: boolean
   onToggle: () => void
+  /** True when the browser has no speech recognition — the mic cannot work. */
+  disabled?: boolean
+  title?: string
 }) {
   const { level, error } = useAudioLevel(active)
 
@@ -18,7 +23,9 @@ export function MicIndicator({
       <button
         onClick={onToggle}
         aria-pressed={active}
-        className="rounded-full border border-white/20 px-4 py-2 text-sm"
+        disabled={disabled}
+        title={title}
+        className="rounded-full border border-white/20 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40"
       >
         {active ? '🎙 on' : '🎙 off'}
       </button>

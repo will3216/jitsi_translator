@@ -63,6 +63,19 @@ export async function POST(req: Request): Promise<Response> {
 
     return Response.json({ translation })
   } catch (err) {
+    // A dead API key (401), a bad model id (404) and an exhausted quota all
+    // collapse into the same 502 for the client, which is correct — the
+    // browser must never see upstream detail — but it leaves the operator
+    // with nothing to act on. This is the only place that distinction exists.
+    // Never log the key or any part of it.
+    const detail =
+      err instanceof Anthropic.APIError
+        ? { name: err.name, status: err.status, message: err.message }
+        : err instanceof Error
+          ? { name: err.name, message: err.message }
+          : { name: 'unknown', message: String(err) }
+    console.error('[translate] upstream failure', { model: MODEL, ...detail })
+
     // Most specific first. APIConnectionError extends APIError in this SDK,
     // so it must be checked before APIError.
     if (err instanceof Anthropic.RateLimitError) {

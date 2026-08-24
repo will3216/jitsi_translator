@@ -10,6 +10,7 @@ export type RoomAction =
   | { type: 'participants/synced'; participants: Participant[] }
   | { type: 'translation/succeeded'; id: string; translation: string }
   | { type: 'translation/failed'; id: string }
+  | { type: 'target/changed'; myTarget: LangCode }
 
 export const initialRoomState: RoomState = {
   utterances: [],
@@ -66,6 +67,25 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
           .sort(byTimestamp),
       }
     }
+
+    // "Show me" changed. Everything already final on screen has to be
+    // re-evaluated against the new target, or the reader keeps staring at
+    // captions in the language they just said they cannot read. Any existing
+    // translation is stale by definition, so it is dropped. Interim text is
+    // never translated, so it is left exactly as it is.
+    case 'target/changed':
+      return {
+        ...state,
+        utterances: state.utterances.map((u) => {
+          if (!u.isFinal) return u
+          const next: RenderedUtterance = {
+            ...u,
+            translationState: stateForUtterance(u, action.myTarget),
+          }
+          delete next.translation // the copy is fresh; `u` is untouched
+          return next
+        }),
+      }
 
     case 'participants/synced':
       return { ...state, participants: action.participants }

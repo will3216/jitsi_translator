@@ -54,7 +54,10 @@ export function useSpeechRecognition({
   onInterim,
   onFinal,
 }: UseSpeechRecognitionOptions) {
-  const [supported, setSupported] = useState(false)
+  // Tri-state: null until the capability check has run. Rendering "your
+  // browser is unsupported" off a first-render `false` would flash that
+  // message on every load in Chrome, so callers must treat null as unknown.
+  const [supported, setSupported] = useState<boolean | null>(null)
   const [listening, setListening] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -81,7 +84,11 @@ export function useSpeechRecognition({
     return currentId.current
   }, [])
 
+  // Capability detection has to happen after mount: the server render has no
+  // `window`, so probing during render would desync hydration. This sets state
+  // exactly once and cannot cascade.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot capability report, see above
     setSupported(getRecognitionCtor() !== null)
   }, [])
 

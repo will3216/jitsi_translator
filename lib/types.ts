@@ -32,3 +32,19 @@ export interface RenderedUtterance extends Utterance {
   translation?: string
   translationState: 'none' | 'pending' | 'done' | 'failed'
 }
+
+/**
+ * The room's message bus. Swapping Ably for the Jitsi data channel means
+ * writing a new implementation of this, not editing the existing one.
+ *
+ * Contract clause that is easy to miss: publish does NOT deliver to the
+ * publisher. The local client renders its own utterances immediately on
+ * recognition, so a transport that echoes them back would double-render
+ * every local caption. Any replacement must filter self-echo internally.
+ */
+export interface Transport {
+  publish(u: Utterance): void
+  subscribe(cb: (u: Utterance) => void): () => void
+  participants: Participant[]
+  connected: boolean
+}
