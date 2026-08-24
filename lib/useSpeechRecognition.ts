@@ -45,7 +45,7 @@ export interface UseSpeechRecognitionOptions {
   locale: string
   enabled: boolean
   onInterim: (id: string, text: string) => void
-  onFinal: (id: string, text: string) => void
+  onFinal: (id: string, text: string, sttMs: number) => void
 }
 
 export function useSpeechRecognition({
@@ -67,6 +67,10 @@ export function useSpeechRecognition({
   const wantActive = useRef(false)
   const backoff = useRef(0)
   const currentId = useRef<string | null>(null)
+  // performance.now() at the moment currentId was minted — the start of the
+  // in-flight utterance's STT clock. Stamped alongside currentId so the two
+  // never drift out of sync.
+  const sttStart = useRef(0)
   const restartTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Keep callbacks in refs so changing them never tears down the recognizer.
@@ -80,6 +84,7 @@ export function useSpeechRecognition({
   const mintId = useCallback(() => {
     if (currentId.current === null) {
       currentId.current = crypto.randomUUID()
+      sttStart.current = performance.now()
     }
     return currentId.current
   }, [])
@@ -123,7 +128,11 @@ export function useSpeechRecognition({
         const text = result[0].transcript.trim()
 
         if (result.isFinal) {
-          if (text.length > 0) finalCb.current(mintId(), text)
+          if (text.length > 0) {
+            const id = mintId()
+            const sttMs = performance.now() - sttStart.current
+            finalCb.current(id, text, sttMs)
+          }
           currentId.current = null // always clear on final, even when empty
         } else if (text.length > 0) {
           interimCb.current(mintId(), text)

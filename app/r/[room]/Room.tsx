@@ -9,6 +9,13 @@ import { SecondWindowButton } from '@/components/SecondWindowButton'
 import { TypeToSend } from '@/components/TypeToSend'
 import { languageByCode } from '@/lib/languages'
 import { initialLanguageSelection, nextLanguageSelection } from '@/lib/languageSelection'
+import {
+  recordAbandoned,
+  recordArrival,
+  recordPaint,
+  recordTranslationEnd,
+  recordTranslationStart,
+} from '@/lib/latency'
 import { initialRoomState, roomReducer } from '@/lib/roomReducer'
 import type { LangCode, Participant, Utterance } from '@/lib/types'
 import { useSpeechRecognition } from '@/lib/useSpeechRecognition'
@@ -111,6 +118,16 @@ export default function Room({
   // Receive remote utterances.
   useEffect(() => {
     return transport.subscribe((u) => {
+      // Only remote, final utterances that actually need translation are
+      // worth timing — one whose source already matches the reader's target
+      // never enters the translation pipeline, so it would never complete a
+      // sample. sttMs is absent for typed utterances (they never went
+      // through speech recognition), not for interim ones — recordArrival
+      // treats that as unmeasured rather than excluding them, the same
+      // treatment renderMs already gets for backgrounded tabs.
+      if (u.isFinal && u.srcLang !== showLangRef.current) {
+        recordArrival(u.id, u.ts, u.sttMs)
+      }
       dispatch({ type: 'utterance/received', utterance: u, myTarget: showLangRef.current })
     })
   }, [transport])
@@ -121,7 +138,7 @@ export default function Room({
 
   // Emit locally first, then publish — do not wait for the round trip.
   const emit = useCallback(
-    (id: string, text: string, isFinal: boolean) => {
+    (id: string, text: string, isFinal: boolean, sttMs?: number) => {
       const u: Utterance = {
         id,
         speakerId: me.id,
@@ -130,6 +147,7 @@ export default function Room({
         text,
         isFinal,
         ts: Date.now(),
+        ...(sttMs !== undefined ? { sttMs } : {}),
       }
       dispatch({ type: 'utterance/received', utterance: u, myTarget: showLangRef.current })
       transport.publish(u)
@@ -141,7 +159,10 @@ export default function Room({
     (id: string, text: string) => emit(id, text, false),
     [emit],
   )
-  const onFinal = useCallback((id: string, text: string) => emit(id, text, true), [emit])
+  const onFinal = useCallback(
+    (id: string, text: string, sttMs: number) => emit(id, text, true, sttMs),
+    [emit],
+  )
 
   const sendTyped = useCallback(
     (text: string) => emit(crypto.randomUUID(), text, true),
@@ -168,6 +189,8 @@ export default function Room({
         .slice(-CONTEXT_SIZE)
         .map((c) => c.text)
 
+      recordTranslationStart(u.id)
+
       fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -183,10 +206,21 @@ export default function Room({
           return (await res.json()) as { translation: string }
         })
         .then(({ translation }) => {
-          if (targetGeneration.current !== generation) return
+          // A stale generation's sample is discarded, not recorded: skip
+          // marking translation end/paint, and drop the pending entry so it
+          // does not sit there unresolved for the rest of the call.
+          if (targetGeneration.current !== generation) {
+            recordAbandoned(u.id)
+            return
+          }
+          recordTranslationEnd(u.id)
           dispatch({ type: 'translation/succeeded', id: u.id, translation })
+          requestAnimationFrame(() => recordPaint(u.id))
         })
         .catch(() => {
+          // A failed translation will never produce a sample either way;
+          // drop its pending entry regardless of generation.
+          recordAbandoned(u.id)
           if (targetGeneration.current !== generation) return
           dispatch({ type: 'translation/failed', id: u.id })
         })
