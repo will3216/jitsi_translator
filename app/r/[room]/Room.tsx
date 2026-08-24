@@ -10,6 +10,7 @@ import { TypeToSend } from '@/components/TypeToSend'
 import { languageByCode } from '@/lib/languages'
 import { initialLanguageSelection, nextLanguageSelection } from '@/lib/languageSelection'
 import {
+  recordAbandoned,
   recordArrival,
   recordPaint,
   recordTranslationEnd,
@@ -203,13 +204,20 @@ export default function Room({
         })
         .then(({ translation }) => {
           // A stale generation's sample is discarded, not recorded: skip
-          // marking translation end/paint so it never completes.
-          if (targetGeneration.current !== generation) return
+          // marking translation end/paint, and drop the pending entry so it
+          // does not sit there unresolved for the rest of the call.
+          if (targetGeneration.current !== generation) {
+            recordAbandoned(u.id)
+            return
+          }
           recordTranslationEnd(u.id)
           dispatch({ type: 'translation/succeeded', id: u.id, translation })
           requestAnimationFrame(() => recordPaint(u.id))
         })
         .catch(() => {
+          // A failed translation will never produce a sample either way;
+          // drop its pending entry regardless of generation.
+          recordAbandoned(u.id)
           if (targetGeneration.current !== generation) return
           dispatch({ type: 'translation/failed', id: u.id })
         })

@@ -20,6 +20,17 @@
  * a timestamp from one machine's Date.now() against another's, so it is the
  * only segment a clock-skewed pair of machines can make look wrong — see
  * `skewSuspected` below.
+ *
+ * Render is the one segment that can go unmeasured. It is captured via
+ * requestAnimationFrame, and browsers do not run rAF in hidden tabs — and
+ * this proof of concept is meant to run in a tab backgrounded behind a live
+ * Jitsi call, so that is the normal case, not an edge case. Rather than
+ * silently drop those utterances (leaving `stats()` looking complete while
+ * quietly measuring nothing) or record a garbage renderMs equal to however
+ * long the tab happened to stay hidden, `renderMs` is optional on a sample:
+ * a hidden-tab utterance is still recorded, with every segment except
+ * render, and `renderUnmeasured` in the stats says how many samples that
+ * happened to. See recordTranslationEnd and recordPaint below.
  */
 
 export interface LatencySample {
@@ -27,7 +38,8 @@ export interface LatencySample {
   sttMs: number
   transportMs: number
   translationMs: number
-  renderMs: number
+  /** Absent when no paint could be measured for this sample — see the module doc. */
+  renderMs?: number
 }
 
 export interface SegmentStats {
@@ -43,6 +55,11 @@ export interface LatencyStats {
   // sender and receiver clocks disagree. Reported, never hidden: a negative
   // sample is left as-is (not clamped to zero) so the evidence stays visible.
   skewSuspected: boolean
+  // How many of `count` samples have no renderMs (the receiving tab was
+  // hidden, or a queued paint arrived implausibly late — see recordPaint).
+  // Read alongside skewSuspected: together they say how far to trust each
+  // number below rather than leaving that unstated.
+  renderUnmeasured: number
   segments: {
     stt: SegmentStats
     transport: SegmentStats
@@ -59,6 +76,12 @@ interface PendingEntry {
   translationMs?: number
   translationEndAt?: number // performance.now() when the response arrived
 }
+
+// A real paint (rAF callback to browser paint) is a handful of milliseconds,
+// never seconds. A queued rAF that fires this long after translationEndAt
+// was not measuring a render — the tab was backgrounded for some or all of
+// the wait — so its value is rejected rather than recorded. See recordPaint.
+const RENDER_SANITY_BOUND_MS = 2000
 
 const pending = new Map<string, PendingEntry>()
 let samples: LatencySample[] = []
@@ -95,29 +118,16 @@ export function recordTranslationStart(id: string): void {
   entry.translationStartAt = performance.now()
 }
 
-/** Mark the arrival of the translation response for `id`. */
-export function recordTranslationEnd(id: string): void {
-  ensureWindowHook()
-  const entry = pending.get(id)
-  if (!entry || entry.translationStartAt === undefined) return
-  const now = performance.now()
-  entry.translationMs = now - entry.translationStartAt
-  entry.translationEndAt = now
-}
-
 /**
- * Mark the paint for `id`. Completes the sample and emits the console line.
- * No-op if the sample was never started, or was abandoned mid-flight (e.g.
- * a stale-generation translation response that was discarded rather than
- * recorded) — in that case translationEndAt is missing and this quietly
- * does nothing, which is the desired "discarded, not recorded" behavior.
+ * Push a completed sample, remove its pending entry, and emit the console
+ * line. The one place that finalises a sample, so recordPaint's normal path
+ * and recordTranslationEnd's hidden-tab fast path stay in sync.
  */
-export function recordPaint(id: string): void {
-  ensureWindowHook()
-  const entry = pending.get(id)
-  if (!entry || entry.translationMs === undefined || entry.translationEndAt === undefined) return
-
-  const renderMs = performance.now() - entry.translationEndAt
+function finalizeSample(
+  id: string,
+  entry: Pick<PendingEntry, 'sttMs' | 'transportMs'> & { translationMs: number },
+  renderMs: number | undefined,
+): void {
   const sample: LatencySample = {
     id,
     sttMs: entry.sttMs,
@@ -128,11 +138,78 @@ export function recordPaint(id: string): void {
   samples.push(sample)
   pending.delete(id)
 
-  const total = sample.sttMs + sample.transportMs + sample.translationMs + sample.renderMs
+  const renderPart = renderMs === undefined ? 'render=unmeasured' : `render=${round(renderMs)}ms`
+  // `total` mirrors the aggregate rule below: it is only the sum of all four
+  // segments, so a sample missing render prints "unmeasured" rather than a
+  // 3-segment sum that would look like — but not be — the same figure other
+  // lines report.
+  const totalPart =
+    renderMs === undefined
+      ? 'total=unmeasured'
+      : `total=${round(sample.sttMs + sample.transportMs + sample.translationMs + renderMs)}ms`
   console.log(
     `[latency] ${id} stt=${round(sample.sttMs)}ms transport=${round(sample.transportMs)}ms ` +
-      `translation=${round(sample.translationMs)}ms render=${round(sample.renderMs)}ms total=${round(total)}ms`,
+      `translation=${round(sample.translationMs)}ms ${renderPart} ${totalPart}`,
   )
+}
+
+/** Mark the arrival of the translation response for `id`. */
+export function recordTranslationEnd(id: string): void {
+  ensureWindowHook()
+  const entry = pending.get(id)
+  if (!entry || entry.translationStartAt === undefined) return
+  const now = performance.now()
+  entry.translationMs = now - entry.translationStartAt
+  entry.translationEndAt = now
+
+  // The receiving tab is not the foreground tab: requestAnimationFrame will
+  // not run until (if ever) it becomes visible again. Waiting for that paint
+  // would either strand this sample in `pending` forever, or — worse — let a
+  // queued rAF fire much later with a renderMs spanning the whole hidden
+  // interval. Close the sample now, with STT/transport/translation but no
+  // render measurement, rather than gamble on either. This also means a
+  // rAF already queued for `id` finds no pending entry when it eventually
+  // runs and is a no-op — see recordPaint.
+  if (typeof document !== 'undefined' && document.hidden) {
+    finalizeSample(id, entry as { sttMs: number; transportMs: number; translationMs: number }, undefined)
+  }
+}
+
+/**
+ * Mark the paint for `id`. Completes the sample and emits the console line.
+ * No-op if the sample was never started, was abandoned mid-flight (e.g. a
+ * stale-generation translation response that was discarded rather than
+ * recorded — translationEndAt is missing and this quietly does nothing,
+ * which is the desired "discarded, not recorded" behavior), or was already
+ * finalised by recordTranslationEnd's hidden-tab fast path above (the entry
+ * is gone from `pending` by the time this queued rAF runs).
+ */
+export function recordPaint(id: string): void {
+  ensureWindowHook()
+  const entry = pending.get(id)
+  if (!entry || entry.translationMs === undefined || entry.translationEndAt === undefined) return
+
+  const elapsed = performance.now() - entry.translationEndAt
+  // Backstop for the narrower race where the tab was still visible when
+  // translation ended (so the sample stayed open here rather than closing
+  // in recordTranslationEnd) but was backgrounded before this queued frame
+  // ran. An implausibly long elapsed time is evidence of exactly that, not
+  // a render measurement, so it is rejected rather than recorded.
+  const renderMs = elapsed > RENDER_SANITY_BOUND_MS ? undefined : elapsed
+
+  finalizeSample(id, entry as { sttMs: number; transportMs: number; translationMs: number }, renderMs)
+}
+
+/**
+ * Discard a pending entry without ever producing a sample: used when a
+ * translation fails, or when its generation goes stale before it resolves.
+ * Together with finalizeSample (recordPaint, and recordTranslationEnd's
+ * hidden-tab path) and resetLatency, this guarantees every entry that
+ * recordArrival adds to `pending` is removed on exactly one of these paths —
+ * none of them leave an entry behind.
+ */
+export function recordAbandoned(id: string): void {
+  pending.delete(id)
 }
 
 /** Discard whatever has been recorded so far, including in-flight samples. */
@@ -178,17 +255,25 @@ function segmentStats(values: number[]): SegmentStats {
  * Pure percentile maths over a set of samples. Defaults to the module's own
  * completed samples, but takes an explicit array so it can be unit tested
  * without touching window/performance globals.
+ *
+ * render and total are computed only from samples that have a renderMs:
+ * `total` means "the sum of all four segments", so a sample missing render
+ * has no total either — every sample still counts toward `count` and toward
+ * stt/transport/translation, but a 3-segment sum is never mixed into the
+ * same distribution as a 4-segment one under the same `total` label.
  */
 export function latencyStats(input: LatencySample[] = samples): LatencyStats {
   const stt = input.map((s) => s.sttMs)
   const transport = input.map((s) => s.transportMs)
   const translation = input.map((s) => s.translationMs)
-  const render = input.map((s) => s.renderMs)
-  const total = input.map((s) => s.sttMs + s.transportMs + s.translationMs + s.renderMs)
+  const measured = input.filter((s): s is LatencySample & { renderMs: number } => s.renderMs !== undefined)
+  const render = measured.map((s) => s.renderMs)
+  const total = measured.map((s) => s.sttMs + s.transportMs + s.translationMs + s.renderMs)
 
   return {
     count: input.length,
     skewSuspected: transport.some((t) => t < 0),
+    renderUnmeasured: input.length - measured.length,
     segments: {
       stt: segmentStats(stt),
       transport: segmentStats(transport),
