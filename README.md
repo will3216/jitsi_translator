@@ -121,6 +121,13 @@ a hang, not like a bug in the script.
 If nothing arrives within `timeoutMs`, the Promise resolves to **`null`** —
 it never rejects and never hangs forever.
 
+`timeoutMs` is approximate, and badly so in a backgrounded tab: Chrome
+throttles timers there, and a 1200ms timeout was measured overshooting to
+~2500ms with the tab hidden (a plain `setTimeout(200)` in the same tab took
+1162ms). Treat it as an upper bound that prevents a hang, not as a
+measurement. This is the same background-tab throttling that produces
+`renderUnmeasured` in the latency stats.
+
 The queue is capped at 100 unread arrivals; past that, the oldest is
 dropped so a script that forgets to drain it doesn't leak memory for the
 life of the tab.
