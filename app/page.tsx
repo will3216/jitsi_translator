@@ -1,6 +1,12 @@
-import { redirect } from 'next/navigation'
+import Image from 'next/image'
+import logo from '@/public/logo_3.jpeg'
+import { CreateRoomButton } from '@/components/CreateRoomButton'
 
 export default function Home() {
-  const room = crypto.randomUUID().slice(0, 8)
-  redirect(`/r/${room}`)
+  return (
+    <main className="flex h-screen flex-col items-center justify-center gap-8 overflow-hidden px-6">
+      <Image src={logo} alt="polyglot" className="w-full max-w-md" />
+      <CreateRoomButton />
+    </main>
+  )
 }
