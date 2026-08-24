@@ -123,6 +123,17 @@ function ensureWindowHook(): void {
 }
 
 /**
+ * Explicit installer for window.polyglotLatency, for callers (Room.tsx)
+ * that want it present from mount rather than lazily on first recorded
+ * traffic. Just delegates to ensureWindowHook, which stays idempotent and
+ * still no-ops when window is undefined (this module is imported into a
+ * component that server-renders).
+ */
+export function installLatencyHook(): void {
+  ensureWindowHook()
+}
+
+/**
  * Record the arrival of a remote, translation-eligible utterance. `sttMs` is
  * absent for typed utterances, which never went through speech recognition
  * — see the module doc.
