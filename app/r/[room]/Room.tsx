@@ -11,6 +11,7 @@ import { ArrivalQueue } from '@/lib/arrivalQueue'
 import { languageByCode } from '@/lib/languages'
 import { initialLanguageSelection, nextLanguageSelection } from '@/lib/languageSelection'
 import {
+  installLatencyHook,
   recordAbandoned,
   recordArrival,
   recordPaint,
@@ -232,11 +233,20 @@ export default function Room({
     [emit],
   )
 
-  // Installs/tears down window.polyglot. Strict Mode double-mounts in dev,
-  // so this must genuinely clean up on every unmount: otherwise a stale
+  // Installs/tears down window.polyglot, and (eagerly, alongside it) installs
+  // window.polyglotLatency. Strict Mode double-mounts in dev, so this must
+  // genuinely clean up window.polyglot on every unmount: otherwise a stale
   // closure from a torn-down Room keeps publishing into a dead transport.
-  // window.polyglotLatency (installed by lib/latency.ts) is untouched here
-  // — sending is driving, measuring is measuring.
+  //
+  // window.polyglotLatency is NOT torn down on cleanup, unlike window.polyglot:
+  // its state lives in module-level variables in lib/latency.ts, not in a
+  // closure over this component's props/transport, so there is no
+  // stale-closure hazard in leaving it installed — and someone may
+  // reasonably want to read stats() after leaving a room. It's installed
+  // here (rather than left to install lazily on first recorded traffic)
+  // so it can never be present-without-the-other or absent-without-the-other:
+  // the README's documented `polyglotLatency.reset()` workflow must work on
+  // a fresh tab, before any traffic.
   useEffect(() => {
     const queue = polyglotQueueRef.current
 
@@ -247,6 +257,7 @@ export default function Room({
     }
 
     ;(window as unknown as { polyglot?: PolyglotConsole }).polyglot = polyglot
+    installLatencyHook()
 
     return () => {
       delete (window as unknown as { polyglot?: PolyglotConsole }).polyglot
