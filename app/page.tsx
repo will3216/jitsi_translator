@@ -1,5 +1,5 @@
 import Image from 'next/image'
-import logo from '@/public/logo_flat_bg.jpeg'
+import logo from '@/public/logo_3.jpeg'
 import { CreateRoomButton } from '@/components/CreateRoomButton'
 
 export default function Home() {
