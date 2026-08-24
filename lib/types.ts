@@ -25,6 +25,10 @@ export interface Utterance {
   text: string
   isFinal: boolean
   ts: number             // client epoch ms at first emit
+  // Speech-start -> final duration, in ms. Both readings come from the
+  // sender's own clock, so this is a duration, not a timestamp — skew
+  // between machines cannot affect it. Only set on the final revision.
+  sttMs?: number
 }
 
 /** Local only. Never published. */
