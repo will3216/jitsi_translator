@@ -31,11 +31,26 @@
  * a hidden-tab utterance is still recorded, with every segment except
  * render, and `renderUnmeasured` in the stats says how many samples that
  * happened to. See recordTranslationEnd and recordPaint below.
+ *
+ * STT gets the same treatment for the same reason. A typed (type-to-send)
+ * utterance never goes through speech recognition, so it has no sttMs —
+ * but it still traverses transport, translation and render exactly like a
+ * spoken one, and its latency there is exactly as real. Rather than exclude
+ * typed utterances from measurement entirely (which would make this
+ * instrumentation testable only by speaking into a microphone — the same
+ * "must use a human voice" trap the project already hit once and escaped
+ * with type-to-send), `sttMs` is optional on a sample: a typed utterance is
+ * still recorded, with every segment except STT, and `sttUnmeasured` in the
+ * stats says how many samples that happened to. A sample can be missing
+ * sttMs, renderMs, or both — an entirely ordinary combination (a typed
+ * utterance received in a backgrounded tab) — and each is tracked
+ * independently.
  */
 
 export interface LatencySample {
   id: string
-  sttMs: number
+  /** Absent when the utterance was typed rather than spoken — see the module doc. */
+  sttMs?: number
   transportMs: number
   translationMs: number
   /** Absent when no paint could be measured for this sample — see the module doc. */
@@ -55,6 +70,9 @@ export interface LatencyStats {
   // sender and receiver clocks disagree. Reported, never hidden: a negative
   // sample is left as-is (not clamped to zero) so the evidence stays visible.
   skewSuspected: boolean
+  // How many of `count` samples have no sttMs (the utterance was typed
+  // rather than spoken, so it never went through speech recognition).
+  sttUnmeasured: number
   // How many of `count` samples have no renderMs (the receiving tab was
   // hidden, or a queued paint arrived implausibly late — see recordPaint).
   // Read alongside skewSuspected: together they say how far to trust each
@@ -70,7 +88,8 @@ export interface LatencyStats {
 }
 
 interface PendingEntry {
-  sttMs: number
+  /** Absent for typed utterances — see the module doc. */
+  sttMs?: number
   transportMs: number
   translationStartAt?: number // performance.now() at fetch start
   translationMs?: number
@@ -103,8 +122,12 @@ function ensureWindowHook(): void {
   })
 }
 
-/** Record the arrival of a remote, translation-eligible utterance. */
-export function recordArrival(id: string, ts: number, sttMs: number): void {
+/**
+ * Record the arrival of a remote, translation-eligible utterance. `sttMs` is
+ * absent for typed utterances, which never went through speech recognition
+ * — see the module doc.
+ */
+export function recordArrival(id: string, ts: number, sttMs?: number): void {
   ensureWindowHook()
   const transportMs = Date.now() - ts
   pending.set(id, { sttMs, transportMs })
@@ -138,17 +161,18 @@ function finalizeSample(
   samples.push(sample)
   pending.delete(id)
 
+  const sttPart = sample.sttMs === undefined ? 'stt=unmeasured' : `stt=${round(sample.sttMs)}ms`
   const renderPart = renderMs === undefined ? 'render=unmeasured' : `render=${round(renderMs)}ms`
   // `total` mirrors the aggregate rule below: it is only the sum of all four
-  // segments, so a sample missing render prints "unmeasured" rather than a
-  // 3-segment sum that would look like — but not be — the same figure other
-  // lines report.
+  // segments, so a sample missing stt and/or render prints "unmeasured"
+  // rather than a partial sum that would look like — but not be — the same
+  // figure other lines report.
   const totalPart =
-    renderMs === undefined
+    sample.sttMs === undefined || renderMs === undefined
       ? 'total=unmeasured'
       : `total=${round(sample.sttMs + sample.transportMs + sample.translationMs + renderMs)}ms`
   console.log(
-    `[latency] ${id} stt=${round(sample.sttMs)}ms transport=${round(sample.transportMs)}ms ` +
+    `[latency] ${id} ${sttPart} transport=${round(sample.transportMs)}ms ` +
       `translation=${round(sample.translationMs)}ms ${renderPart} ${totalPart}`,
   )
 }
@@ -171,7 +195,7 @@ export function recordTranslationEnd(id: string): void {
   // rAF already queued for `id` finds no pending entry when it eventually
   // runs and is a no-op — see recordPaint.
   if (typeof document !== 'undefined' && document.hidden) {
-    finalizeSample(id, entry as { sttMs: number; transportMs: number; translationMs: number }, undefined)
+    finalizeSample(id, entry as { sttMs?: number; transportMs: number; translationMs: number }, undefined)
   }
 }
 
@@ -197,7 +221,7 @@ export function recordPaint(id: string): void {
   // a render measurement, so it is rejected rather than recorded.
   const renderMs = elapsed > RENDER_SANITY_BOUND_MS ? undefined : elapsed
 
-  finalizeSample(id, entry as { sttMs: number; transportMs: number; translationMs: number }, renderMs)
+  finalizeSample(id, entry as { sttMs?: number; transportMs: number; translationMs: number }, renderMs)
 }
 
 /**
@@ -256,24 +280,31 @@ function segmentStats(values: number[]): SegmentStats {
  * completed samples, but takes an explicit array so it can be unit tested
  * without touching window/performance globals.
  *
- * render and total are computed only from samples that have a renderMs:
- * `total` means "the sum of all four segments", so a sample missing render
- * has no total either — every sample still counts toward `count` and toward
- * stt/transport/translation, but a 3-segment sum is never mixed into the
- * same distribution as a 4-segment one under the same `total` label.
+ * stt/render/total are each computed only from samples that have the
+ * segment(s) they need. `total` means "the sum of all four segments", so a
+ * sample missing stt and/or render has no total either — every sample still
+ * counts toward `count` and toward whichever of stt/transport/translation/
+ * render it does have, but a partial sum is never mixed into the same
+ * distribution as a full 4-segment one under the same `total` label.
  */
 export function latencyStats(input: LatencySample[] = samples): LatencyStats {
-  const stt = input.map((s) => s.sttMs)
+  const sttMeasured = input.filter((s): s is LatencySample & { sttMs: number } => s.sttMs !== undefined)
+  const stt = sttMeasured.map((s) => s.sttMs)
   const transport = input.map((s) => s.transportMs)
   const translation = input.map((s) => s.translationMs)
-  const measured = input.filter((s): s is LatencySample & { renderMs: number } => s.renderMs !== undefined)
-  const render = measured.map((s) => s.renderMs)
-  const total = measured.map((s) => s.sttMs + s.transportMs + s.translationMs + s.renderMs)
+  const renderMeasured = input.filter((s): s is LatencySample & { renderMs: number } => s.renderMs !== undefined)
+  const render = renderMeasured.map((s) => s.renderMs)
+  const fullyMeasured = input.filter(
+    (s): s is LatencySample & { sttMs: number; renderMs: number } =>
+      s.sttMs !== undefined && s.renderMs !== undefined,
+  )
+  const total = fullyMeasured.map((s) => s.sttMs + s.transportMs + s.translationMs + s.renderMs)
 
   return {
     count: input.length,
     skewSuspected: transport.some((t) => t < 0),
-    renderUnmeasured: input.length - measured.length,
+    sttUnmeasured: input.length - sttMeasured.length,
+    renderUnmeasured: input.length - renderMeasured.length,
     segments: {
       stt: segmentStats(stt),
       transport: segmentStats(transport),

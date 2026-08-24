@@ -122,4 +122,72 @@ describe('latencyStats', () => {
     // stt is unaffected: it never depended on render being present.
     expect(stats.segments.stt).toEqual({ min: 800, median: 800, p95: 800, max: 800 })
   })
+
+  // Typed (type-to-send) utterances never go through speech recognition, so
+  // they have no sttMs. They still traverse transport, translation and
+  // render exactly like a spoken utterance — mirrors the renderMs treatment
+  // above.
+  it('excludes a sample with no sttMs from STT statistics but still counts it and its other segments', () => {
+    const spoken = sample({ sttMs: 800, transportMs: 120, translationMs: 600, renderMs: 16 })
+    const typed = sample({ id: 'u2', sttMs: undefined, transportMs: 200, translationMs: 700, renderMs: 20 })
+    const stats = latencyStats([spoken, typed])
+
+    expect(stats.count).toBe(2)
+    // stt stats come only from the sample that has an sttMs.
+    expect(stats.segments.stt).toEqual({ min: 800, median: 800, p95: 800, max: 800 })
+    // transport, translation and render still see both samples.
+    expect(stats.segments.transport).toEqual({ min: 120, median: 160, p95: 200, max: 200 })
+    expect(stats.segments.translation).toEqual({ min: 600, median: 650, p95: 700, max: 700 })
+    expect(stats.segments.render).toEqual({ min: 16, median: 18, p95: 20, max: 20 })
+  })
+
+  it('counts sttUnmeasured correctly across a mix of typed and spoken samples', () => {
+    const stats = latencyStats([
+      sample({ sttMs: 800 }),
+      sample({ sttMs: undefined }),
+      sample({ sttMs: undefined }),
+      sample({ sttMs: 500 }),
+    ])
+    expect(stats.count).toBe(4)
+    expect(stats.sttUnmeasured).toBe(2)
+  })
+
+  it('excludes an unmeasured-stt sample from total, rather than summing only its measured segments', () => {
+    const spoken = sample({ sttMs: 800, transportMs: 120, translationMs: 600, renderMs: 16 }) // total 1536
+    const typed = sample({ id: 'u2', sttMs: undefined, transportMs: 100, translationMs: 100, renderMs: 100 })
+    const stats = latencyStats([spoken, typed])
+
+    expect(stats.count).toBe(2)
+    expect(stats.sttUnmeasured).toBe(1)
+    // Only the fully-measured (spoken) sample contributes to `total`.
+    expect(stats.segments.total).toEqual({ min: 1536, median: 1536, p95: 1536, max: 1536 })
+  })
+
+  // A typed utterance received in a backgrounded tab: sttMs and renderMs are
+  // both absent. Entirely ordinary, not a corner case — handled sanely by
+  // counting toward both unmeasured tallies and still contributing to
+  // transport/translation, with no total.
+  it('handles a sample missing both sttMs and renderMs, counted in both unmeasured tallies', () => {
+    const spoken = sample({ sttMs: 800, transportMs: 120, translationMs: 600, renderMs: 16 })
+    const typedInBackground = sample({
+      id: 'u2',
+      sttMs: undefined,
+      transportMs: 200,
+      translationMs: 300,
+      renderMs: undefined,
+    })
+    const stats = latencyStats([spoken, typedInBackground])
+
+    expect(stats.count).toBe(2)
+    expect(stats.sttUnmeasured).toBe(1)
+    expect(stats.renderUnmeasured).toBe(1)
+    expect(stats.segments.transport).toEqual({ min: 120, median: 160, p95: 200, max: 200 })
+    expect(stats.segments.translation).toEqual({ min: 300, median: 450, p95: 600, max: 600 })
+    // Neither stt nor render nor total sees the typed/backgrounded sample
+    // for its missing segment(s); total needs both, so only the fully
+    // spoken-and-painted sample contributes.
+    expect(stats.segments.stt).toEqual({ min: 800, median: 800, p95: 800, max: 800 })
+    expect(stats.segments.render).toEqual({ min: 16, median: 16, p95: 16, max: 16 })
+    expect(stats.segments.total).toEqual({ min: 1536, median: 1536, p95: 1536, max: 1536 })
+  })
 })

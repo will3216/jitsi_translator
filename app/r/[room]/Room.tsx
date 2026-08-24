@@ -119,10 +119,13 @@ export default function Room({
   useEffect(() => {
     return transport.subscribe((u) => {
       // Only remote, final utterances that actually need translation are
-      // worth timing — interim revisions have no sttMs yet, and one whose
-      // source already matches the reader's target never enters the
-      // translation pipeline, so it would never complete a sample.
-      if (u.isFinal && u.srcLang !== showLangRef.current && typeof u.sttMs === 'number') {
+      // worth timing — one whose source already matches the reader's target
+      // never enters the translation pipeline, so it would never complete a
+      // sample. sttMs is absent for typed utterances (they never went
+      // through speech recognition), not for interim ones — recordArrival
+      // treats that as unmeasured rather than excluding them, the same
+      // treatment renderMs already gets for backgrounded tabs.
+      if (u.isFinal && u.srcLang !== showLangRef.current) {
         recordArrival(u.id, u.ts, u.sttMs)
       }
       dispatch({ type: 'utterance/received', utterance: u, myTarget: showLangRef.current })
