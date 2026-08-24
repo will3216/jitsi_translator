@@ -7,6 +7,7 @@ import { MicIndicator } from '@/components/MicIndicator'
 import { Roster } from '@/components/Roster'
 import { SecondWindowButton } from '@/components/SecondWindowButton'
 import { TypeToSend } from '@/components/TypeToSend'
+import { ArrivalQueue } from '@/lib/arrivalQueue'
 import { languageByCode } from '@/lib/languages'
 import { initialLanguageSelection, nextLanguageSelection } from '@/lib/languageSelection'
 import {
@@ -17,11 +18,35 @@ import {
   recordTranslationStart,
 } from '@/lib/latency'
 import { initialRoomState, roomReducer } from '@/lib/roomReducer'
+import { validateSendText } from '@/lib/sendValidation'
 import type { LangCode, Participant, Utterance } from '@/lib/types'
 import { useSpeechRecognition } from '@/lib/useSpeechRecognition'
 import { useTransport } from '@/lib/useTransport'
 
 const CONTEXT_SIZE = 3
+// Cap for the queue backing window.polyglot.nextUtterance — see the module
+// doc on ArrivalQueue. Nobody draining it must not grow it without bound.
+const POLYGLOT_QUEUE_CAP = 100
+
+/**
+ * The shape window.polyglot.onUtterance/nextUtterance hand back — a plain
+ * object, not the internal RenderedUtterance, and only what a driving
+ * script needs. See the README's "Console test hooks" section.
+ */
+interface PolyglotUtterance {
+  id: string
+  speakerId: string
+  speakerName: string
+  srcLang: LangCode
+  text: string
+  ts: number
+}
+
+interface PolyglotConsole {
+  send: (text: string) => string | null
+  onUtterance: (cb: (u: PolyglotUtterance) => void) => () => void
+  nextUtterance: (timeoutMs?: number) => Promise<PolyglotUtterance | null>
+}
 
 /**
  * True only once `value` has stayed true for `ms`. The transport is legitimately
@@ -103,6 +128,13 @@ export default function Room({
   // re-queued for a different language.
   const targetGeneration = useRef(0)
 
+  // Backs window.polyglot.onUtterance/nextUtterance. A ref, not useState —
+  // nothing here needs to trigger a render — initialised the same way
+  // `requested` above is: React keeps only the first render's value, so the
+  // ref itself is stable across the component's lifetime even though the
+  // expression re-evaluates on every render.
+  const polyglotQueueRef = useRef(new ArrivalQueue<PolyglotUtterance>(POLYGLOT_QUEUE_CAP))
+
   // Changing "Show me" has to re-translate what is already on screen —
   // otherwise the reader switches language and every caption they can see
   // stays in the one they could not read. Clearing `requested` is not
@@ -127,6 +159,20 @@ export default function Room({
       // treatment renderMs already gets for backgrounded tabs.
       if (u.isFinal && u.srcLang !== showLangRef.current) {
         recordArrival(u.id, u.ts, u.sttMs)
+      }
+      // window.polyglot.onUtterance/nextUtterance: remote (already
+      // guaranteed by this callback) and final only — interim revisions
+      // fire several times a second and would trigger a driving script on
+      // a half-word.
+      if (u.isFinal) {
+        polyglotQueueRef.current.push({
+          id: u.id,
+          speakerId: u.speakerId,
+          speakerName: u.speakerName,
+          srcLang: u.srcLang,
+          text: u.text,
+          ts: u.ts,
+        })
       }
       dispatch({ type: 'utterance/received', utterance: u, myTarget: showLangRef.current })
     })
@@ -168,6 +214,45 @@ export default function Room({
     (text: string) => emit(crypto.randomUUID(), text, true),
     [emit],
   )
+
+  // window.polyglot.send: the same validation TypeToSend applies (extracted
+  // into lib/sendValidation so the two paths are honestly identical, not
+  // just nominally so), then the same emit() path sendTyped uses — it
+  // enters the translation pipeline exactly like pressing Enter. Returns
+  // the minted id, or null if the text was rejected (empty after trim, or
+  // over the length limit) — see the README's console-hooks section.
+  const polyglotSend = useCallback(
+    (text: string): string | null => {
+      const result = validateSendText(text)
+      if (!result.ok || result.text === undefined) return null
+      const id = crypto.randomUUID()
+      emit(id, result.text, true)
+      return id
+    },
+    [emit],
+  )
+
+  // Installs/tears down window.polyglot. Strict Mode double-mounts in dev,
+  // so this must genuinely clean up on every unmount: otherwise a stale
+  // closure from a torn-down Room keeps publishing into a dead transport.
+  // window.polyglotLatency (installed by lib/latency.ts) is untouched here
+  // — sending is driving, measuring is measuring.
+  useEffect(() => {
+    const queue = polyglotQueueRef.current
+
+    const polyglot: PolyglotConsole = {
+      send: polyglotSend,
+      onUtterance: (cb) => queue.subscribe(cb),
+      nextUtterance: (timeoutMs) => queue.next(timeoutMs),
+    }
+
+    ;(window as unknown as { polyglot?: PolyglotConsole }).polyglot = polyglot
+
+    return () => {
+      delete (window as unknown as { polyglot?: PolyglotConsole }).polyglot
+      queue.clear()
+    }
+  }, [polyglotSend])
 
   const alone = state.participants.filter((p) => p.id !== me.id).length === 0
   const otherLang: LangCode = languages.show === 'en' ? 'es' : 'en'
